@@ -1,0 +1,14 @@
+{
+  "name": "stackvil-exam-root",
+  "version": "1.0.0",
+  "description": "Stackvil Online Examination Portal Root Utility Workspace",
+  "private": true,
+  "scripts": {
+    "install:backend": "cd stackvil-exam/backend && npm install",
+    "install:frontend": "cd stackvil-exam/frontend && npm install",
+    "install-all": "npm run install:backend && npm run install:frontend",
+    "seed": "cd stackvil-exam/backend && node seed.js",
+    "backend": "cd stackvil-exam/backend && npm run dev",
+    "frontend": "cd stackvil-exam/frontend && npm run dev"
+  }
+}
