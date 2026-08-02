@@ -10,6 +10,7 @@ const {
   getSettings,
   updateSettings,
   createCustomCandidateExam,
+  scheduleCandidateExam,
 } = require('../controllers/adminController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
@@ -71,6 +72,8 @@ router.post('/candidates/:id/create-custom-exam', upload.fields([
   { name: 'aptitudePdf', maxCount: 1 },
   { name: 'technicalPdf', maxCount: 1 }
 ]), createCustomCandidateExam);
+
+router.put('/exams/:examId/schedule', scheduleCandidateExam);
 
 /**
  * @swagger

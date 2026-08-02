@@ -559,12 +559,40 @@ const createCustomCandidateExam = async (req, res, next) => {
       shuffleOptions: true,
       passingScore: 50,
       assignedCandidates: [candidateId],
-      status: 'Active'
+      status: 'Draft'
     });
 
     res.status(200).json({
       success: true,
-      message: `Successfully scheduled custom exam with ${createdQuestions.length} questions for ${candidate.name}!`,
+      message: `Successfully saved custom exam with ${createdQuestions.length} questions for ${candidate.name}!`,
+      exam
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Schedule/activate a draft exam for candidates
+ * @route   PUT /api/admin/exams/:examId/schedule
+ * @access  Private (Admin/Superadmin)
+ */
+const scheduleCandidateExam = async (req, res, next) => {
+  try {
+    const { examId } = req.params;
+    const exam = await Exam.findById(examId);
+
+    if (!exam) {
+      return res.status(404).json({ success: false, message: 'Exam not found' });
+    }
+
+    exam.status = 'Active';
+    exam.startDate = new Date();
+    await exam.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Exam "${exam.title}" has been successfully scheduled and activated!`,
       exam
     });
   } catch (error) {
@@ -583,4 +611,5 @@ module.exports = {
   getSettings,
   updateSettings,
   createCustomCandidateExam,
+  scheduleCandidateExam,
 };

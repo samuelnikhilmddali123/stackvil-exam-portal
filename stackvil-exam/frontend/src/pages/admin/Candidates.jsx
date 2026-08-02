@@ -83,6 +83,35 @@ const Candidates = () => {
   const [customCodingInput, setCustomCodingInput] = useState('');
   const [customCodingOutput, setCustomCodingOutput] = useState('');
 
+  const handleScheduleDraftExam = async (examId) => {
+    try {
+      setSubmitting(true);
+      const res = await axios.put(`/api/admin/exams/${examId}/schedule`);
+      if (res.data.success) {
+        toast.success(res.data.message || 'Exam scheduled and activated successfully!');
+        fetchExams();
+        fetchCandidates();
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to schedule exam.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleScheduleButtonClick = (cand) => {
+    const candidateDraftExam = allExams.find(ex => 
+      ex.status === 'Draft' && 
+      ex.assignedCandidates?.some(cId => (typeof cId === 'object' ? cId._id : cId) === cand._id)
+    );
+
+    if (candidateDraftExam) {
+      handleScheduleDraftExam(candidateDraftExam._id);
+    } else {
+      openAssignModal(cand);
+    }
+  };
+
   const openAssignModal = (cand) => {
     setCandidateToAssign(cand);
     
@@ -446,7 +475,7 @@ const Candidates = () => {
                       <td className="px-6 py-4 text-center">
                         <div className="flex items-center justify-center space-x-2">
                           <button
-                            onClick={() => openAssignModal(cand)}
+                            onClick={() => handleScheduleButtonClick(cand)}
                             className="flex items-center space-x-1 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 font-semibold text-xs rounded-xl border border-emerald-200/80 dark:border-emerald-800/60 transition shadow-xs"
                             title="Schedule Custom Exam"
                           >
@@ -668,9 +697,25 @@ const Candidates = () => {
                             <p className="font-bold text-xs text-slate-800 dark:text-white">{ex.title}</p>
                             <p className="text-[10px] text-slate-400">Duration: {ex.duration} Mins</p>
                           </div>
-                          <span className="px-2 py-0.5 bg-brand-50 dark:bg-brand-950/20 text-brand-700 dark:text-brand-400 rounded text-[9px] font-bold uppercase">
-                            {ex.status}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
+                              ex.status === 'Draft' ? 'bg-amber-50 text-amber-600 border border-amber-200' : 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+                            }`}>
+                              {ex.status}
+                            </span>
+                            {ex.status === 'Draft' && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  handleScheduleDraftExam(ex._id);
+                                  setIsProfileModalOpen(false);
+                                }}
+                                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold rounded-lg transition"
+                              >
+                                Schedule Now
+                              </button>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>
