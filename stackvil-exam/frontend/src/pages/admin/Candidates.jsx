@@ -447,10 +447,11 @@ const Candidates = () => {
                         <div className="flex items-center justify-center space-x-2">
                           <button
                             onClick={() => openAssignModal(cand)}
-                            className="p-1.5 text-slate-450 hover:text-emerald-600 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition"
-                            title="Schedule/Assign Exam"
+                            className="flex items-center space-x-1 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 font-semibold text-xs rounded-xl border border-emerald-200/80 dark:border-emerald-800/60 transition shadow-xs"
+                            title="Schedule Custom Exam"
                           >
-                            <Plus className="h-4.5 w-4.5 text-emerald-600" />
+                            <Plus className="h-3.5 w-3.5" />
+                            <span>Schedule</span>
                           </button>
                           <button
                             onClick={() => openEdit(cand)}
