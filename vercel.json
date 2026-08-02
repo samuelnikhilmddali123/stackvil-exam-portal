@@ -1,0 +1,10 @@
+{
+  "buildCommand": "cd stackvil-exam/frontend && npm run build",
+  "outputDirectory": "stackvil-exam/frontend/dist",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
