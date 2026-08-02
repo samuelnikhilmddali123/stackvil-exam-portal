@@ -598,12 +598,26 @@ const Candidates = () => {
               <h3 className="text-base font-bold text-slate-800 dark:text-white">
                 Candidate Profile
               </h3>
-              <button 
-                onClick={() => { setIsProfileModalOpen(false); setProfileCandidate(null); }} 
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg transition"
-              >
-                <X className="h-5 w-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsProfileModalOpen(false);
+                    openAssignModal(profileCandidate);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-xl transition shadow-sm"
+                  title="Schedule Exam for this candidate"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Schedule
+                </button>
+                <button 
+                  onClick={() => { setIsProfileModalOpen(false); setProfileCandidate(null); }} 
+                  className="p-1 text-slate-400 hover:text-slate-600 rounded-lg transition"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
             </div>
 
             <div className="space-y-4 text-left">
@@ -784,7 +798,7 @@ const Candidates = () => {
                   className="w-1/2 py-2.5 bg-brand-600 hover:bg-brand-700 disabled:bg-brand-400 text-white font-semibold text-xs rounded-xl transition flex items-center justify-center space-x-1"
                 >
                   {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-                  <span>Schedule Exam</span>
+                  <span>Save Exam</span>
                 </button>
               </div>
 
