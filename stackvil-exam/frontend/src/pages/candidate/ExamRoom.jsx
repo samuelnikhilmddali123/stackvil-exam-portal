@@ -22,6 +22,8 @@ import ProctorCamera from '../../components/ProctorCamera';
 import QuestionPalette from '../../components/QuestionPalette';
 import WarningModal from '../../components/WarningModal';
 import CodeEditor from '../../components/CodeEditor';
+import LoadingSkeleton from '../../components/LoadingSkeleton';
+import VSCodeWorkspace from '../../components/vscode/VSCodeWorkspace';
 
 const ExamRoom = () => {
   const { examId } = useParams();
@@ -39,6 +41,19 @@ const ExamRoom = () => {
   const [questionTimes, setQuestionTimes] = useState({}); // { qId: secondsSpent }
   const [reviewLater, setReviewLater] = useState([]); // [qIds]
   const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Multi-round state tracking
+  const [currentRound, setCurrentRound] = useState(1); // 1, 'success1', 2, 'success2', 3
+  const [round1Stats, setRound1Stats] = useState(null);
+  const [round2Stats, setRound2Stats] = useState(null);
+
+  // Round 3 workspace state
+  const [round3Files, setRound3Files] = useState({});
+  const [activeFile, setActiveFile] = useState('backend/controller.js');
+  const [terminalLogs, setTerminalLogs] = useState([
+    { type: 'system', text: '$ npm run start' }
+  ]);
 
   // Timer state
   const [timeLeft, setTimeLeft] = useState(0); // in seconds
@@ -47,22 +62,48 @@ const ExamRoom = () => {
   // Network State
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
+  useEffect(() => {
+    const handleMessage = (e) => {
+      if (e.data && (e.data.type === 'terminal-log' || e.data.type === 'terminal-error')) {
+        setTerminalLogs(prev => [
+          ...prev,
+          {
+            type: e.data.type === 'terminal-error' ? 'error' : 'log',
+            text: e.data.text
+          }
+        ]);
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
+  // Autosave for Round 3
+  useEffect(() => {
+    if (currentRound !== 3 || !isExamActive) return;
+    const saveInterval = setInterval(async () => {
+      try {
+        const totalTimeTaken = Math.round((Date.now() - startTimeRef.current) / 1000);
+        await axios.post(`/api/candidate/exams/${examId}/round/3/save`, {
+          files: round3Files,
+          totalTimeTaken
+        });
+      } catch (err) {
+        console.error('Autosave failed:', err);
+      }
+    }, 10000);
+    return () => clearInterval(saveInterval);
+  }, [currentRound, round3Files, isExamActive, examId]);
+
   // Proctoring Warnings
   const [warningsCount, setWarningsCount] = useState(0);
   const [warningModal, setWarningModal] = useState({ isOpen: false, title: '', message: '' });
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
-    fetchExam();
+    fetchRound(1);
     setupAntiCheatingListeners();
     enterFullscreen();
-
-    // LocalStorage recovery checklist
-    const saved = localStorage.getItem(`exam_${examId}_answers`);
-    if (saved) {
-      setAnswers(JSON.parse(saved));
-      toast.success('Restored previous saved responses.');
-    }
 
     return () => {
       cleanupAntiCheatingListeners();
@@ -98,10 +139,10 @@ const ExamRoom = () => {
 
   // Sync state to localstorage for auto save
   useEffect(() => {
-    if (Object.keys(answers).length > 0) {
-      localStorage.setItem(`exam_${examId}_answers`, JSON.stringify(answers));
+    if (Object.keys(answers).length > 0 && (currentRound === 1 || currentRound === 2)) {
+      localStorage.setItem(`exam_${examId}_round${currentRound}_answers`, JSON.stringify(answers));
     }
-  }, [answers]);
+  }, [answers, currentRound]);
 
   const [runningCode, setRunningCode] = useState(false);
   const [runResults, setRunResults] = useState(null);
@@ -142,19 +183,44 @@ const ExamRoom = () => {
     }
   };
 
-  const fetchExam = async () => {
+  const fetchRound = async (roundNum) => {
     try {
       setLoading(true);
-      const res = await axios.get(`/api/candidate/exams/${examId}/start`);
+      const res = await axios.get(`/api/candidate/exams/${examId}/round/${roundNum}`);
       if (res.data.success) {
-        const data = res.data.exam;
-        setExam(data);
-        setQuestions(data.questions || []);
-        setTimeLeft(data.duration * 60);
+        setExam({ title: res.data.examTitle });
+        
+        if (roundNum === 3) {
+          setRound3Files(res.data.files || {});
+          setActiveFile('backend/controller.js');
+          setTimeLeft(res.data.duration * 60);
+          setTerminalLogs([
+            { type: 'system', text: '$ npm run start' }
+          ]);
+        } else {
+          setQuestions(res.data.questions || []);
+          setTimeLeft(res.data.duration * 60);
+          setCurrentIdx(0);
+
+          // Recover answers from local storage specific to this round
+          const saved = localStorage.getItem(`exam_${examId}_round${roundNum}_answers`);
+          if (saved) {
+            setAnswers(JSON.parse(saved));
+            toast.success(`Restored previous saved responses for Round ${roundNum}.`);
+          } else {
+            setAnswers({});
+          }
+
+          setReviewLater([]);
+          setQuestionTimes({});
+        }
+
+        setCurrentRound(roundNum);
         setIsExamActive(true);
+        startTimeRef.current = Date.now();
       }
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Access Denied.');
+      toast.error(err.response?.data?.message || `Failed to start Round ${roundNum}.`);
       navigate('/candidate/profile');
     } finally {
       setLoading(false);
@@ -285,15 +351,16 @@ const ExamRoom = () => {
   };
 
   const triggerViolation = (type) => {
+    // 1. Immediately log warning locally for instant visual feedback
+    setWarningsCount(prev => {
+      const next = prev + 1;
+      handleWarningLogged(next, type);
+      return next;
+    });
+
+    // 2. Report to backend and capture frame silently in background
     if (proctorRef.current) {
-      proctorRef.current.captureViolation(type);
-    } else {
-      // Fallback update warnings count manually if webcam not loaded
-      setWarningsCount(prev => {
-        const next = prev + 1;
-        handleWarningLogged(next, type);
-        return next;
-      });
+      proctorRef.current.captureViolation(type, true);
     }
   };
 
@@ -371,45 +438,200 @@ const ExamRoom = () => {
   // ==========================================
 
   const handleManualSubmit = () => {
-    if (window.confirm('Are you sure you want to finish and submit your exam?')) {
-      performFinalSubmission();
+    const unanswered = questions.length - Object.keys(answers).length;
+    let message = `Are you sure you want to finish and submit Round ${currentRound}?`;
+    if (unanswered > 0) {
+      message = `You have ${unanswered} unanswered questions. Are you sure you want to finish and submit Round ${currentRound}?`;
+    }
+    if (window.confirm(message)) {
+      performRoundSubmission();
     }
   };
 
   const handleAutoSubmit = (warnings = warningsCount) => {
-    performFinalSubmission(warnings);
+    performRoundSubmission(warnings);
   };
 
-  const performFinalSubmission = async (warns = warningsCount) => {
+  const handleCodeChange = (newVal) => {
+    setRound3Files(prev => ({
+      ...prev,
+      [activeFile]: newVal
+    }));
+  };
+
+  const getPreviewSrcDoc = () => {
+    const html = round3Files['frontend/index.html'] || '';
+    const css = round3Files['frontend/style.css'] || '';
+    const js = round3Files['frontend/script.js'] || '';
+    const controller = round3Files['backend/controller.js'] || '';
+
+    const runtimeScript = `
+      <script>
+        const _log = console.log;
+        const _error = console.error;
+        
+        console.log = function(...args) {
+          _log(...args);
+          window.parent.postMessage({ type: 'terminal-log', text: args.join(' ') }, '*');
+        };
+        console.error = function(...args) {
+          _error(...args);
+          window.parent.postMessage({ type: 'terminal-error', text: args.join(' ') }, '*');
+        };
+
+        window.onerror = function(message, source, lineno, colno, error) {
+          window.parent.postMessage({ type: 'terminal-error', text: 'Runtime Error: ' + message + ' (line ' + lineno + ')' }, '*');
+        };
+
+        if (!window.__mockDb) {
+          window.__mockDb = [
+            { id: '1', name: 'Nikhil Samuel', email: 'nikhil@example.com', department: 'Engineering', salary: 6500 },
+            { id: '2', name: 'John Doe', email: 'john@example.com', department: 'Marketing', salary: 5000 }
+          ];
+        }
+
+        const mockDbPool = {
+          query: async (sql, params) => {
+            const lower = sql.toLowerCase().trim();
+            if (lower.startsWith('select')) {
+              return [window.__mockDb, null];
+            }
+            if (lower.startsWith('insert')) {
+              const newEmp = {
+                id: String(window.__mockDb.length + 1),
+                name: params[0],
+                email: params[1],
+                department: params[2],
+                salary: Number(params[3])
+              };
+              window.__mockDb.push(newEmp);
+              return [{ insertId: newEmp.id }, null];
+            }
+            if (lower.startsWith('update')) {
+              const id = params[params.length - 1];
+              const emp = window.__mockDb.find(e => e.id === String(id));
+              if (emp) {
+                emp.name = params[0];
+                emp.email = params[1];
+                emp.department = params[2];
+                emp.salary = Number(params[3]);
+              }
+              return [{ affectedRows: 1 }, null];
+            }
+            if (lower.startsWith('delete')) {
+              const id = params[0];
+              window.__mockDb = window.__mockDb.filter(e => e.id !== String(id));
+              return [{ affectedRows: 1 }, null];
+            }
+            return [[], null];
+          }
+        };
+
+        let controllerInstance = {};
+        try {
+          const controllerCode = \`${controller.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`;
+          const cleanedCode = controllerCode.replace(/const\\s+pool\\s*=\\s*require\\s*\\([^\\)]+\\)/g, 'const pool = mockDbPool');
+          const module = { exports: {} };
+          const run = new Function('module', 'exports', 'pool', cleanedCode + '\\nreturn module.exports;');
+          controllerInstance = run(module, module.exports, mockDbPool);
+          console.log('[Express Server] Node server.js listening on port 3000');
+        } catch(err) {
+          console.error('Compilation Error in backend/controller.js: ' + err.message);
+        }
+
+        const originalFetch = window.fetch;
+        window.fetch = async (url, options = {}) => {
+          const method = (options.method || 'GET').toUpperCase();
+          if (url.startsWith('/api/employees')) {
+            console.log('[Express Router] ' + method + ' ' + url);
+            let resData = null;
+            const resMock = {
+              json: (data) => { resData = data; }
+            };
+
+            try {
+              if (url === '/api/employees') {
+                if (method === 'GET' && controllerInstance.getEmployees) {
+                  await controllerInstance.getEmployees({}, resMock);
+                } else if (method === 'POST' && controllerInstance.createEmployee) {
+                  const body = JSON.parse(options.body || '{}');
+                  await controllerInstance.createEmployee({ body }, resMock);
+                }
+              } else {
+                const parts = url.split('/');
+                const id = parts[parts.length - 1];
+                if (method === 'PUT' && controllerInstance.updateEmployee) {
+                  const body = JSON.parse(options.body || '{}');
+                  await controllerInstance.updateEmployee({ params: { id }, body }, resMock);
+                } else if (method === 'DELETE' && controllerInstance.deleteEmployee) {
+                  await controllerInstance.deleteEmployee({ params: { id } }, resMock);
+                }
+              }
+            } catch (err) {
+              console.error('[Express Handler Error] ' + err.message);
+            }
+
+            return {
+              ok: true,
+              json: async () => resData || { success: false, message: 'API handler failed or not found' }
+            };
+          }
+          return originalFetch(url, options);
+        };
+      </script>
+    `;
+
+    let doc = html;
+    doc = doc.replace('<head>', '<head>' + runtimeScript);
+    doc = doc.replace('</head>', '<style>' + css + '</style></head>');
+    doc = doc.replace('</body>', '<script>' + js + '</script></body>');
+    return doc;
+  };
+
+  const performRoundSubmission = async (warns = warningsCount) => {
     try {
+      setIsSubmitting(true);
       setIsExamActive(false);
-      
-      // Calculate total duration
       const totalTimeTaken = Math.round((Date.now() - startTimeRef.current) / 1000);
 
-      // Build responses array
-      const responsePayload = questions.map((q) => ({
-        questionId: q._id,
-        answer: answers[q._id] !== undefined ? answers[q._id] : '',
-        timeSpent: questionTimes[q._id] || 0,
-      }));
-
-      const res = await axios.post(`/api/candidate/exams/${examId}/submit`, {
-        responses: responsePayload,
+      const payload = currentRound === 3 ? {
+        files: round3Files,
         totalTimeTaken,
-        warningsCount: warns,
-      });
+        warningsCount: warns
+      } : {
+        responses: questions.map((q) => ({
+          questionId: q._id,
+          answer: answers[q._id] !== undefined ? answers[q._id] : '',
+          timeSpent: questionTimes[q._id] || 0,
+        })),
+        totalTimeTaken,
+        warningsCount: warns
+      };
+
+      const res = await axios.post(`/api/candidate/exams/${examId}/round/${currentRound}/submit`, payload);
 
       if (res.data.success) {
-        // Clear local storage backups
-        localStorage.removeItem(`exam_${examId}_answers`);
-        exitFullscreen();
-        toast.success('Exam submitted successfully.');
-        navigate(`/candidate/result/${res.data.result.id}`);
+        localStorage.removeItem(`exam_${examId}_round${currentRound}_answers`);
+
+        if (currentRound === 1) {
+          setRound1Stats(res.data.result);
+          toast.success('Round 1 submitted successfully!');
+          setCurrentRound('success1');
+        } else if (currentRound === 2) {
+          setRound2Stats(res.data.result);
+          toast.success('Round 2 submitted successfully!');
+          setCurrentRound('success2');
+        } else {
+          exitFullscreen();
+          toast.success('Round 3 submitted successfully! Assessment complete.');
+          navigate(`/candidate/result/${res.data.result.id}`);
+        }
       }
     } catch (error) {
-      toast.error('Failed to submit exam payload.');
-      setIsExamActive(true); // Re-activate if error occurs
+      toast.error(error.response?.data?.message || 'Failed to submit round answers.');
+      setIsExamActive(true);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -418,6 +640,147 @@ const ExamRoom = () => {
       <div className="h-screen w-screen flex items-center justify-center bg-slate-900 text-white">
         <LoadingSkeleton type="page" />
       </div>
+    );
+  }
+
+  if (currentRound === 'success1') {
+    return (
+      <div className="h-screen w-screen bg-slate-950 text-white flex flex-col justify-center items-center p-6 text-left overflow-y-auto">
+        <div className="w-full max-w-xl bg-slate-900 border border-slate-800 rounded-3xl p-8 space-y-6 shadow-2xl animate-fadeIn">
+          <div className="text-center space-y-3">
+            <div className="h-16 w-16 bg-emerald-500/10 text-emerald-500 rounded-full flex items-center justify-center mx-auto border border-emerald-500/20">
+              <CheckCircle className="h-10 w-10 text-emerald-500 animate-bounce" />
+            </div>
+            <h2 className="text-2xl font-extrabold tracking-tight">Round 1 Completed Successfully</h2>
+            <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Aptitude Assessment Completed</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 text-xs font-semibold">
+            <div className="p-4 bg-slate-950 border border-slate-850 rounded-2xl space-y-1">
+              <span className="text-slate-500 block uppercase text-[10px]">Round Name</span>
+              <span className="text-sm font-bold text-slate-200">Aptitude Assessment</span>
+            </div>
+            <div className="p-4 bg-slate-950 border border-slate-850 rounded-2xl space-y-1">
+              <span className="text-slate-500 block uppercase text-[10px]">Total Questions</span>
+              <span className="text-sm font-bold text-slate-200">30 Questions</span>
+            </div>
+            <div className="p-4 bg-slate-950 border border-slate-850 rounded-2xl space-y-1">
+              <span className="text-slate-500 block uppercase text-[10px]">Score Obtained</span>
+              <span className="text-sm font-bold text-slate-200">{round1Stats?.score || 0} Marks</span>
+            </div>
+            <div className="p-4 bg-slate-950 border border-slate-850 rounded-2xl space-y-1">
+              <span className="text-slate-500 block uppercase text-[10px]">Percentage</span>
+              <span className={`text-sm font-bold ${round1Stats?.status === 'Pass' ? 'text-emerald-500' : 'text-rose-500'}`}>
+                {round1Stats?.percentage?.toFixed(1) || 0}%
+              </span>
+            </div>
+            <div className="p-4 bg-slate-950 border border-slate-850 rounded-2xl space-y-1">
+              <span className="text-slate-500 block uppercase text-[10px]">Time Taken</span>
+              <span className="text-sm font-bold text-slate-200">
+                {Math.floor((round1Stats?.totalTimeTaken || 0) / 60)}m {(round1Stats?.totalTimeTaken || 0) % 60}s
+              </span>
+            </div>
+            <div className="p-4 bg-slate-950 border border-slate-850 rounded-2xl space-y-1">
+              <span className="text-slate-500 block uppercase text-[10px]">Round Status</span>
+              <span className={`px-2 py-0.5 rounded text-[10px] inline-block font-extrabold ${
+                round1Stats?.status === 'Pass' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20' : 'bg-rose-50 text-rose-600 dark:bg-rose-950/20'
+              }`}>
+                {round1Stats?.status?.toUpperCase()}
+              </span>
+            </div>
+          </div>
+
+          <div className="pt-2">
+            <button
+              onClick={() => fetchRound(2)}
+              className="w-full py-4 bg-brand-600 hover:bg-brand-700 text-white font-extrabold rounded-2xl shadow-lg shadow-brand-500/20 transition flex items-center justify-center space-x-2 text-sm cursor-pointer"
+            >
+              <span>Start Round 2 →</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (currentRound === 'success2') {
+    return (
+      <div className="h-screen w-screen bg-slate-950 text-white flex flex-col justify-center items-center p-6 text-left overflow-y-auto">
+        <div className="w-full max-w-xl bg-slate-900 border border-slate-800 rounded-3xl p-8 space-y-6 shadow-2xl animate-fadeIn">
+          <div className="text-center space-y-3">
+            <div className="h-16 w-16 bg-emerald-500/10 text-emerald-500 rounded-full flex items-center justify-center mx-auto border border-emerald-500/20">
+              <CheckCircle className="h-10 w-10 text-emerald-500 animate-bounce" />
+            </div>
+            <h2 className="text-2xl font-extrabold tracking-tight">Round 2 Completed Successfully</h2>
+            <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Technical Assessment Completed</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 text-xs font-semibold">
+            <div className="p-4 bg-slate-950 border border-slate-850 rounded-2xl space-y-1">
+              <span className="text-slate-500 block uppercase text-[10px]">Round Name</span>
+              <span className="text-sm font-bold text-slate-200">Technical Assessment</span>
+            </div>
+            <div className="p-4 bg-slate-950 border border-slate-850 rounded-2xl space-y-1">
+              <span className="text-slate-500 block uppercase text-[10px]">Total Questions</span>
+              <span className="text-sm font-bold text-slate-200">30 Questions</span>
+            </div>
+            <div className="p-4 bg-slate-950 border border-slate-850 rounded-2xl space-y-1">
+              <span className="text-slate-500 block uppercase text-[10px]">Score Obtained</span>
+              <span className="text-sm font-bold text-slate-200">{round2Stats?.score || 0} Marks</span>
+            </div>
+            <div className="p-4 bg-slate-950 border border-slate-850 rounded-2xl space-y-1">
+              <span className="text-slate-500 block uppercase text-[10px]">Percentage</span>
+              <span className={`text-sm font-bold ${round2Stats?.status === 'Pass' ? 'text-emerald-500' : 'text-rose-500'}`}>
+                {round2Stats?.percentage?.toFixed(1) || 0}%
+              </span>
+            </div>
+            <div className="p-4 bg-slate-950 border border-slate-850 rounded-2xl space-y-1">
+              <span className="text-slate-500 block uppercase text-[10px]">Time Taken</span>
+              <span className="text-sm font-bold text-slate-200">
+                {Math.floor((round2Stats?.totalTimeTaken || 0) / 60)}m {(round2Stats?.totalTimeTaken || 0) % 60}s
+              </span>
+            </div>
+            <div className="p-4 bg-slate-950 border border-slate-850 rounded-2xl space-y-1">
+              <span className="text-slate-500 block uppercase text-[10px]">Round Status</span>
+              <span className={`px-2 py-0.5 rounded text-[10px] inline-block font-extrabold ${
+                round2Stats?.status === 'Pass' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20' : 'bg-rose-50 text-rose-600 dark:bg-rose-950/20'
+              }`}>
+                {round2Stats?.status?.toUpperCase()}
+              </span>
+            </div>
+          </div>
+
+          <div className="pt-2">
+            <button
+              onClick={() => fetchRound(3)}
+              className="w-full py-4 bg-brand-600 hover:bg-brand-700 text-white font-extrabold rounded-2xl shadow-lg shadow-brand-500/20 transition flex items-center justify-center space-x-2 text-sm cursor-pointer"
+            >
+              <span>Start Round 3 →</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (currentRound === 3) {
+    return (
+      <VSCodeWorkspace
+        files={round3Files}
+        onSaveFile={(updatedFiles) => setRound3Files(updatedFiles)}
+        onSubmitProject={handleManualSubmit}
+        examTitle={exam?.title || 'Coding Assessment'}
+        durationMinutes={60}
+        timeLeftSeconds={timeLeft}
+        isSubmitting={isSubmitting}
+        proctorComponent={
+          <ProctorCamera
+            ref={proctorRef}
+            examId={examId}
+            onWarningLogged={handleWarningLogged}
+          />
+        }
+      />
     );
   }
 

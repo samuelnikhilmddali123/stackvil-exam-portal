@@ -19,9 +19,16 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       host: true,
+      allowedHosts: true,
       proxy: {
         '/api': proxyConfig,
         '/uploads': proxyConfig,
+        '/socket.io': {
+          target: backendUrl,
+          ws: true,
+          changeOrigin: true,
+          secure: false,
+        },
       }
     }
   };

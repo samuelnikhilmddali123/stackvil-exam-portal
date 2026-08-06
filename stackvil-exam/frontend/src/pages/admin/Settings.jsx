@@ -6,7 +6,9 @@ import {
   Mail, 
   ShieldCheck, 
   Palette,
-  Loader2
+  Loader2,
+  Database,
+  Trash2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import LoadingSkeleton from '../../components/LoadingSkeleton';
@@ -95,6 +97,35 @@ const Settings = () => {
       toast.error(err.response?.data?.message || 'Failed to update portal settings.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleResetDatabase = async () => {
+    const confirm1 = window.confirm('CRITICAL WARNING: This will completely wipe all candidates, exam results, and custom assessments. Are you sure you want to proceed?');
+    if (!confirm1) return;
+
+    const confirm2 = window.confirm('FINAL CONFIRMATION: Please confirm once more that you want to reset the database. You will be logged out automatically after reset.');
+    if (!confirm2) return;
+
+    try {
+      const toastId = toast.loading('Resetting database...');
+      const res = await axios.post('/api/admin/reset-database');
+      toast.dismiss(toastId);
+      if (res.data.success) {
+        toast.success('Database reset successfully. Logging you out...');
+        
+        // Log out user
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        
+        // Wait a brief moment for toast, then redirect
+        setTimeout(() => {
+          window.location.href = '/login/admin';
+        }, 1500);
+      }
+    } catch (err) {
+      toast.dismiss();
+      toast.error(err.response?.data?.message || 'Database reset failed.');
     }
   };
 
@@ -268,6 +299,32 @@ const Settings = () => {
               <option value="light">Light Theme Mode (Corporate Blue-White)</option>
               <option value="dark">Dark Theme Mode</option>
             </select>
+          </div>
+        </div>
+
+        {/* Database Maintenance */}
+        <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 border border-rose-200 dark:border-rose-950/30 shadow-sm space-y-5">
+          <h3 className="font-bold text-rose-600 dark:text-rose-400 text-sm flex items-center space-x-2 border-b border-rose-50 dark:border-rose-950/20 pb-3">
+            <Database className="h-5 w-5 text-rose-600" />
+            <span>Database Maintenance</span>
+          </h3>
+          
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 bg-rose-50/50 dark:bg-rose-950/10 border border-rose-100 dark:border-rose-950/30 rounded-2xl">
+            <div className="space-y-1">
+              <h4 className="text-sm font-bold text-slate-800 dark:text-white">Factory Reset Database</h4>
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed max-w-xl">
+                Clears all candidate exam results, logs, warning history, custom assessments, and restores the default administrative profiles and question banks to their initial state.
+              </p>
+            </div>
+            
+            <button
+              type="button"
+              onClick={handleResetDatabase}
+              className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-md shadow-rose-500/10 transition flex items-center space-x-2 whitespace-nowrap"
+            >
+              <Trash2 className="h-4 w-4" />
+              <span>Reset Database</span>
+            </button>
           </div>
         </div>
 

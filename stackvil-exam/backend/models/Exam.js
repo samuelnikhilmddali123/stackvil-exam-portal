@@ -51,6 +51,16 @@ const examSchema = new mongoose.Schema(
       enum: ['Draft', 'Active', 'Completed'],
       default: 'Draft',
     },
+    codingProject: {
+      files: {
+        type: mongoose.Schema.Types.Mixed,
+        default: {}
+      },
+      hasProject: {
+        type: Boolean,
+        default: false
+      }
+    }
   },
   {
     timestamps: true,

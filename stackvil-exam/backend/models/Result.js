@@ -1,5 +1,56 @@
 const mongoose = require('mongoose');
 
+const responseSchema = new mongoose.Schema({
+  questionId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Question',
+    required: true,
+  },
+  answer: {
+    type: mongoose.Schema.Types.Mixed, // The actual candidate response
+  },
+  isCorrect: {
+    type: Boolean,
+    default: false,
+  },
+  marksObtained: {
+    type: Number,
+    default: 0,
+  },
+  timeSpent: {
+    type: Number, // Time spent in seconds on this question
+    default: 0,
+  },
+});
+
+const roundSchema = new mongoose.Schema({
+  responses: [responseSchema],
+  score: {
+    type: Number,
+    default: 0,
+  },
+  percentage: {
+    type: Number,
+    default: 0,
+  },
+  status: {
+    type: String,
+    enum: ['Pass', 'Fail', 'Pending'],
+    default: 'Pending',
+  },
+  completed: {
+    type: Boolean,
+    default: false,
+  },
+  completedTime: {
+    type: Date,
+  },
+  totalTimeTaken: {
+    type: Number, // In seconds
+    default: 0,
+  },
+});
+
 const resultSchema = new mongoose.Schema(
   {
     candidate: {
@@ -12,30 +63,8 @@ const resultSchema = new mongoose.Schema(
       ref: 'Exam',
       required: true,
     },
-    responses: [
-      {
-        questionId: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: 'Question',
-          required: true,
-        },
-        answer: {
-          type: mongoose.Schema.Types.Mixed, // The actual candidate response
-        },
-        isCorrect: {
-          type: Boolean,
-          default: false,
-        },
-        marksObtained: {
-          type: Number,
-          default: 0,
-        },
-        timeSpent: {
-          type: Number, // Time spent in seconds on this question
-          default: 0,
-        },
-      },
-    ],
+    // Top-level overall fields for compatibility with reports, Excel, and PDF generators
+    responses: [responseSchema],
     score: {
       type: Number,
       required: true,
@@ -48,23 +77,62 @@ const resultSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['Pass', 'Fail'],
+      enum: ['Pass', 'Fail', 'Pending'],
+      default: 'Pending',
       required: true,
-    },
-    rank: {
-      type: Number,
     },
     totalTimeTaken: {
       type: Number, // Total duration in seconds
+      default: 0,
+    },
+    warningsCount: {
+      type: Number,
       default: 0,
     },
     submittedAt: {
       type: Date,
       default: Date.now,
     },
-    warningsCount: {
-      type: Number,
-      default: 0,
+
+    // Round-specific tracking
+    round1: {
+      type: roundSchema,
+      default: () => ({}),
+    },
+    round2: {
+      type: roundSchema,
+      default: () => ({}),
+    },
+    round3: {
+      type: new mongoose.Schema({
+        files: {
+          type: mongoose.Schema.Types.Mixed,
+          default: {}
+        },
+        completed: {
+          type: Boolean,
+          default: false
+        },
+        completedTime: Date,
+        score: {
+          type: Number,
+          default: 0
+        },
+        percentage: {
+          type: Number,
+          default: 0
+        },
+        status: {
+          type: String,
+          enum: ['Pass', 'Fail', 'Pending'],
+          default: 'Pending'
+        },
+        totalTimeTaken: {
+          type: Number,
+          default: 0
+        }
+      }),
+      default: () => ({}),
     },
   },
   {

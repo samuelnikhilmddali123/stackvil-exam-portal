@@ -11,6 +11,8 @@ const {
   updateSettings,
   createCustomCandidateExam,
   scheduleCandidateExam,
+  forceSubmitCandidateExam,
+  resetDatabase,
 } = require('../controllers/adminController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
@@ -74,6 +76,7 @@ router.post('/candidates/:id/create-custom-exam', upload.fields([
 ]), createCustomCandidateExam);
 
 router.put('/exams/:examId/schedule', scheduleCandidateExam);
+router.post('/exams/:examId/force-submit', forceSubmitCandidateExam);
 
 /**
  * @swagger
@@ -114,5 +117,7 @@ router.get('/candidates/export', exportCandidates);
 router.route('/settings')
   .get(getSettings)
   .put(upload.single('logo'), updateSettings);
+
+router.post('/reset-database', resetDatabase);
 
 module.exports = router;

@@ -44,6 +44,12 @@ const logWarning = async (req, res, next) => {
     proctorLog.logs.push(newLogItem);
     await proctorLog.save();
 
+    // Sync warnings count in the Result collection in real-time (if Result exists)
+    await Result.updateOne(
+      { candidate: userId, exam: examId },
+      { $set: { warningsCount: nextWarningNumber } }
+    );
+
     res.status(200).json({
       success: true,
       message: `Violation recorded: ${type}`,
@@ -129,8 +135,69 @@ const getProctorLogs = async (req, res, next) => {
   }
 };
 
+/**
+ * @desc    Get all currently active proctoring sessions (live exam takers)
+ * @route   GET /api/proctor/live
+ * @access  Private (Admin/Superadmin)
+ */
+const getLiveProctorSessions = async (req, res, next) => {
+  try {
+    // 1. Fetch all proctor logs populated with candidate and exam info
+    const logs = await ProctorLog.find()
+      .populate('candidate', 'name email department')
+      .populate('exam', 'title duration');
+
+    const liveSessions = [];
+
+    for (const log of logs) {
+      if (!log.candidate || !log.exam) continue;
+
+      // 2. Check if a corresponding Result exists
+      const hasResult = await Result.exists({ candidate: log.candidate._id, exam: log.exam._id });
+      if (hasResult) continue; // Already submitted, not active
+
+      // 3. Verify if the candidate has recent activity (within last 3 minutes)
+      const logsArray = log.logs || [];
+      if (logsArray.length === 0) continue;
+
+      const lastLog = logsArray[logsArray.length - 1];
+      const timeSinceLastActivity = Date.now() - new Date(lastLog.timestamp).getTime();
+      const isActive = timeSinceLastActivity < 3 * 60 * 1000; // 3 minutes window
+
+      if (isActive) {
+        // Find latest log item with an image (periodic capture or violation)
+        const logsWithImage = logsArray.filter(l => l.imagePath);
+        const latestImageLog = logsWithImage.length > 0 ? logsWithImage[logsWithImage.length - 1] : null;
+
+        // Count warnings
+        const warnings = logsArray.filter((l) => 
+          l.type !== 'PeriodicCapture' && l.warningNumber !== undefined
+        );
+
+        liveSessions.push({
+          candidateId: log.candidate._id,
+          candidateName: log.candidate.name,
+          candidateEmail: log.candidate.email,
+          candidateDepartment: log.candidate.department || 'General',
+          examId: log.exam._id,
+          examTitle: log.exam.title,
+          warningsCount: warnings.length,
+          latestImagePath: latestImageLog ? latestImageLog.imagePath : null,
+          lastActivityType: lastLog.type,
+          lastActivityTime: lastLog.timestamp,
+        });
+      }
+    }
+
+    res.status(200).json({ success: true, count: liveSessions.length, sessions: liveSessions });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   logWarning,
   uploadFrame,
   getProctorLogs,
+  getLiveProctorSessions,
 };

@@ -108,95 +108,7 @@ const Candidates = () => {
     if (candidateDraftExam) {
       handleScheduleDraftExam(candidateDraftExam._id);
     } else {
-      openAssignModal(cand);
-    }
-  };
-
-  const openAssignModal = (cand) => {
-    setCandidateToAssign(cand);
-    
-    // Initialize default dates
-    const now = new Date();
-    const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    
-    // Format to datetime-local inputs: YYYY-MM-DDTHH:MM
-    const formatDate = (d) => {
-      const pad = (n) => String(n).padStart(2, '0');
-      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    };
-
-    setCustomTitle(`${cand.name}'s Custom Assessment`);
-    setCustomDuration(60);
-    setCustomStartDate(formatDate(now));
-    setCustomEndDate(formatDate(future));
-    
-    setAptitudeFile(null);
-    setTechnicalFile(null);
-    setCustomCodingTitle('');
-    setCustomCodingTemplate(`function solution(n) {\n  // Write code here\n}`);
-    setCustomCodingInput('');
-    setCustomCodingOutput('');
-    
-    setIsAssignModalOpen(true);
-  };
-
-  const clearCustomExamForm = () => {
-    setCustomTitle('');
-    setCustomDuration(60);
-    setCustomStartDate('');
-    setCustomEndDate('');
-    setAptitudeFile(null);
-    setTechnicalFile(null);
-    setCustomCodingTitle('');
-    setCustomCodingTemplate('');
-    setCustomCodingInput('');
-    setCustomCodingOutput('');
-  };
-
-  const handleCustomExamSubmit = async (e) => {
-    e.preventDefault();
-
-    if (!aptitudeFile && !technicalFile) {
-      toast.error('Add at least one round (Aptitude PDF or Technical PDF)');
-      return;
-    }
-
-    try {
-      setSubmitting(true);
-
-      const now = new Date();
-      const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
-
-      const formData = new FormData();
-      formData.append('title', customTitle);
-      formData.append('duration', customDuration);
-      formData.append('startDate', now.toISOString());
-      formData.append('endDate', future.toISOString());
-
-      if (aptitudeFile) {
-        formData.append('aptitudePdf', aptitudeFile);
-      }
-      if (technicalFile) {
-        formData.append('technicalPdf', technicalFile);
-      }
-
-
-
-      const res = await axios.post(`/api/admin/candidates/${candidateToAssign._id}/create-custom-exam`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-
-      if (res.data.success) {
-        toast.success(res.data.message || 'Custom Exam scheduled successfully!');
-        setIsAssignModalOpen(false);
-        setCandidateToAssign(null);
-        clearCustomExamForm();
-        fetchExams();
-      }
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to schedule custom exam.');
-    } finally {
-      setSubmitting(false);
+      navigate(`/admin/candidates/${cand._id}/custom-exam`);
     }
   };
 
@@ -633,7 +545,7 @@ const Candidates = () => {
                   type="button"
                   onClick={() => {
                     setIsProfileModalOpen(false);
-                    openAssignModal(profileCandidate);
+                    navigate(`/admin/candidates/${profileCandidate._id}/custom-exam`);
                   }}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-xl transition shadow-sm"
                   title="Schedule Exam for this candidate"
@@ -679,7 +591,7 @@ const Candidates = () => {
                           type="button"
                           onClick={() => {
                             setIsProfileModalOpen(false);
-                            openAssignModal(profileCandidate);
+                            navigate(`/admin/candidates/${profileCandidate._id}/custom-exam`);
                           }}
                           className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-[11px] font-bold shadow-md shadow-brand-500/10 transition"
                         >
@@ -737,121 +649,7 @@ const Candidates = () => {
         </div>
       )}
 
-      {/* Assign Custom Exam Modal */}
-      {isAssignModalOpen && candidateToAssign && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-          <div className="bg-white dark:bg-slate-800 rounded-3xl w-full max-w-xl shadow-2xl p-6 border border-slate-100 dark:border-slate-700/50 space-y-6 max-h-[90vh] overflow-y-auto animate-fadeIn">
-            
-            {/* Header */}
-            <div className="flex justify-between items-center pb-3 border-b border-slate-100 dark:border-slate-700">
-              <div>
-                <h3 className="text-base font-bold text-slate-805 dark:text-white">
-                  Schedule Custom Assessment
-                </h3>
-                <p className="text-[11px] text-slate-400">For Candidate: <strong className="text-brand-600">{candidateToAssign.name}</strong></p>
-              </div>
-              <button 
-                onClick={() => { setIsAssignModalOpen(false); setCandidateToAssign(null); clearCustomExamForm(); }} 
-                className="p-1 text-slate-400 hover:text-slate-655 rounded-lg transition"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
 
-            {/* Form */}
-            <form onSubmit={handleCustomExamSubmit} className="space-y-4 text-left">
-              
-              {/* Exam Title & Duration */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Assessment Title</label>
-                  <input
-                    type="text"
-                    required
-                    value={customTitle}
-                    onChange={(e) => setCustomTitle(e.target.value)}
-                    placeholder="e.g. Dileep's Custom Evaluation"
-                    className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 text-slate-850 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase">Duration (Minutes)</label>
-                  <input
-                    type="number"
-                    required
-                    min={15}
-                    value={customDuration}
-                    onChange={(e) => setCustomDuration(e.target.value)}
-                    className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 text-slate-850 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none"
-                  />
-                </div>
-              </div>
-
-
-
-              <hr className="border-slate-100 dark:border-slate-700" />
-
-              {/* Rounds */}
-              <div className="space-y-4">
-                <h4 className="text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">Assessment Rounds Setup</h4>
-
-                {/* Round 1: Aptitude PDF */}
-                <div className="p-4 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-100 dark:border-slate-750/80 space-y-2">
-                  <span className="px-2 py-0.5 bg-brand-50 dark:bg-brand-950/20 text-brand-700 dark:text-brand-400 rounded text-[9px] font-bold uppercase">
-                    Round 1: Aptitude Section
-                  </span>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase block">Upload Aptitude PDF Questions</label>
-                    <input
-                      type="file"
-                      accept=".pdf"
-                      onChange={(e) => setAptitudeFile(e.target.files[0])}
-                      className="text-xs text-slate-500 dark:text-slate-400 file:mr-4 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-slate-200 file:text-slate-700 hover:file:bg-slate-300 dark:file:bg-slate-800 dark:file:text-slate-350 cursor-pointer"
-                    />
-                  </div>
-                </div>
-
-                {/* Round 2: Technical PDF */}
-                <div className="p-4 bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-100 dark:border-slate-750/80 space-y-2">
-                  <span className="px-2 py-0.5 bg-brand-50 dark:bg-brand-950/20 text-brand-700 dark:text-brand-400 rounded text-[9px] font-bold uppercase">
-                    Round 2: Technical Section
-                  </span>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase block">Upload Technical PDF Questions</label>
-                    <input
-                      type="file"
-                      accept=".pdf"
-                      onChange={(e) => setTechnicalFile(e.target.files[0])}
-                      className="text-xs text-slate-500 dark:text-slate-400 file:mr-4 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-slate-200 file:text-slate-700 hover:file:bg-slate-300 dark:file:bg-slate-800 dark:file:text-slate-350 cursor-pointer"
-                    />
-                  </div>
-                </div>
-
-              </div>
-
-              {/* Submit Buttons */}
-              <div className="flex space-x-3 pt-3">
-                <button
-                  type="button"
-                  onClick={() => { setIsAssignModalOpen(false); setCandidateToAssign(null); clearCustomExamForm(); }}
-                  className="w-1/2 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="w-1/2 py-2.5 bg-brand-600 hover:bg-brand-700 disabled:bg-brand-400 text-white font-semibold text-xs rounded-xl transition flex items-center justify-center space-x-1"
-                >
-                  {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-                  <span>Save Exam</span>
-                </button>
-              </div>
-
-            </form>
-          </div>
-        </div>
-      )}
 
     </div>
   );

@@ -91,7 +91,12 @@ const getCandidateReport = async (req, res, next) => {
 
     const result = await Result.findOne({ candidate: candidateId, exam: examId })
       .populate('candidate', 'name email department')
-      .populate('exam', 'title duration passingScore questions');
+      .populate({
+        path: 'exam',
+        populate: {
+          path: 'questions'
+        }
+      });
 
     if (!result) {
       return res.status(404).json({ success: false, message: 'Result not found for this candidate exam session' });

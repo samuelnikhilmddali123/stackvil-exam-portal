@@ -1,11 +1,22 @@
 const express = require('express');
-const { logWarning, uploadFrame, getProctorLogs } = require('../controllers/proctorController');
+const { logWarning, uploadFrame, getProctorLogs, getLiveProctorSessions } = require('../controllers/proctorController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 const upload = require('../middleware/uploadMiddleware');
 
 const router = express.Router();
 
 router.use(protect);
+
+/**
+ * @swagger
+ * /api/proctor/live:
+ *   get:
+ *     summary: Retrieve currently active proctor sessions
+ *     tags: [Proctoring]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.get('/live', authorize('admin', 'superadmin'), getLiveProctorSessions);
 
 /**
  * @swagger

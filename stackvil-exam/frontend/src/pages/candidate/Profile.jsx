@@ -25,24 +25,37 @@ const Profile = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchProfileData();
+    fetchProfileData(true);
+    // Auto-poll for newly assigned exams every 4 seconds
+    const interval = setInterval(() => {
+      fetchProfileData(false);
+    }, 4000);
+    return () => clearInterval(interval);
   }, []);
 
-  const fetchProfileData = async () => {
+  const fetchProfileData = async (isInitial = false) => {
     try {
-      setLoading(true);
+      if (isInitial) setLoading(true);
       const [exRes, resRes] = await Promise.all([
         axios.get('/api/candidate/exams'),
         axios.get('/api/candidate/results')
       ]);
 
-      if (exRes.data.success) setExams(exRes.data.exams);
+      if (exRes.data.success) {
+        const newExams = exRes.data.exams || [];
+        setExams(prev => {
+          if (!isInitial && prev.length === 0 && newExams.length > 0) {
+            toast.success('🎉 New examination has been assigned to you!', { duration: 5000 });
+          }
+          return newExams;
+        });
+      }
       if (resRes.data.success) setResults(resRes.data.results);
     } catch (err) {
-      toast.error('Failed to load portal updates.');
+      if (isInitial) toast.error('Failed to load portal updates.');
       console.error(err);
     } finally {
-      setLoading(false);
+      if (isInitial) setLoading(false);
     }
   };
 

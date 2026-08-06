@@ -163,6 +163,56 @@ const ResultPage = () => {
 
         </div>
 
+        {/* Round by Round Breakdown details */}
+        <div className="bg-slate-50 dark:bg-slate-900/40 rounded-3xl p-6 border border-slate-100 dark:border-slate-800 text-left space-y-4">
+          <h4 className="text-xs font-black uppercase text-slate-400 tracking-wider">Assessment Rounds Breakdown</h4>
+          <div className="grid grid-cols-1 gap-4 text-xs font-semibold">
+            {/* Round 1 */}
+            <div className="p-4 bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-750 rounded-2xl space-y-2">
+              <span className="text-slate-450 uppercase text-[9px] block">Round 1: Aptitude Assessment</span>
+              <div className="flex justify-between items-center text-sm font-extrabold text-slate-850 dark:text-slate-100">
+                <span>Score: {result?.round1?.score || 0} Marks</span>
+                <span className={result?.round1?.status === 'Pass' ? 'text-emerald-500' : 'text-rose-500'}>
+                  {result?.round1?.percentage?.toFixed(1) || 0}% ({result?.round1?.status || 'N/A'})
+                </span>
+              </div>
+              <div className="text-[10px] text-slate-405 font-medium">
+                Time: {Math.floor((result?.round1?.totalTimeTaken || 0) / 60)}m {(result?.round1?.totalTimeTaken || 0) % 60}s
+              </div>
+            </div>
+
+            {/* Round 2 */}
+            <div className="p-4 bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-750 rounded-2xl space-y-2">
+              <span className="text-slate-450 uppercase text-[9px] block">Round 2: Technical Assessment</span>
+              <div className="flex justify-between items-center text-sm font-extrabold text-slate-850 dark:text-slate-100">
+                <span>Score: {result?.round2?.score || 0} Marks</span>
+                <span className={result?.round2?.status === 'Pass' ? 'text-emerald-500' : 'text-rose-500'}>
+                  {result?.round2?.percentage?.toFixed(1) || 0}% ({result?.round2?.status || 'N/A'})
+                </span>
+              </div>
+              <div className="text-[10px] text-slate-405 font-medium">
+                Time: {Math.floor((result?.round2?.totalTimeTaken || 0) / 60)}m {(result?.round2?.totalTimeTaken || 0) % 60}s
+              </div>
+            </div>
+
+            {/* Round 3 */}
+            {result?.round3 && result.round3.completed && (
+              <div className="p-4 bg-white dark:bg-slate-800 border border-slate-150 dark:border-slate-750 rounded-2xl space-y-2">
+                <span className="text-slate-450 uppercase text-[9px] block">Round 3: Backend Coding Workspace</span>
+                <div className="flex justify-between items-center text-sm font-extrabold text-slate-850 dark:text-slate-100">
+                  <span>Score: {result.round3.score || 0} Marks</span>
+                  <span className={result.round3.status === 'Pass' ? 'text-emerald-500' : 'text-rose-500'}>
+                    {result.round3.percentage?.toFixed(1) || 0}% ({result.round3.status || 'N/A'})
+                  </span>
+                </div>
+                <div className="text-[10px] text-slate-405 font-medium">
+                  Time: {Math.floor((result.round3.totalTimeTaken || 0) / 60)}m {(result.round3.totalTimeTaken || 0) % 60}s
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Detailed audit stats */}
         <div className="space-y-3.5 pt-2 text-xs text-slate-650 dark:text-slate-350 max-w-sm mx-auto font-medium">
           

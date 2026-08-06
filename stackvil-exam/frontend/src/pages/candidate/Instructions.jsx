@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { 
@@ -25,13 +25,16 @@ const Instructions = () => {
   // Media status
   const [cameraStatus, setCameraStatus] = useState('checking'); // checking, ok, fail
   const [stream, setStream] = useState(null);
+  const streamRef = useRef(null);
+  const currentRequestRef = useRef(0);
 
   useEffect(() => {
     fetchExamDetails();
     checkDevices();
     return () => {
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
+      currentRequestRef.current++;
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
       }
     };
   }, []);
@@ -53,18 +56,40 @@ const Instructions = () => {
   };
 
   const checkDevices = async () => {
+    const requestId = ++currentRequestRef.current;
     try {
       setCameraStatus('checking');
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: true,
         audio: true
       });
+      
+      if (requestId !== currentRequestRef.current) {
+        mediaStream.getTracks().forEach(track => track.stop());
+        return;
+      }
+
       setStream(mediaStream);
+      streamRef.current = mediaStream;
       setCameraStatus('ok');
     } catch (err) {
+      if (requestId !== currentRequestRef.current) return;
       console.error(err);
       setCameraStatus('fail');
       toast.error('Webcam and Microphone permissions are mandatory.');
+    }
+  };
+
+  const enterFullscreen = () => {
+    const el = document.documentElement;
+    if (el.requestFullscreen) {
+      el.requestFullscreen().catch((err) => console.warn('Fullscreen request failed:', err));
+    } else if (el.webkitRequestFullscreen) {
+      el.webkitRequestFullscreen().catch((err) => console.warn('Fullscreen request failed:', err));
     }
   };
 
@@ -77,6 +102,9 @@ const Instructions = () => {
       toast.error('You must agree to the examination terms before starting.');
       return;
     }
+
+    // Enter fullscreen mode on user click gesture
+    enterFullscreen();
 
     // Redirect to exam screen
     navigate(`/candidate/exam/${examId}`);

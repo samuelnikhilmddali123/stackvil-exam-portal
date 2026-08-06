@@ -8,11 +8,19 @@ import React, {
 import axios from 'axios';
 import { Camera, CameraOff, Video } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { io } from 'socket.io-client';
+import { useAuth } from '../context/AuthContext';
 
 const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged }, ref) => {
+  const { user } = useAuth();
+  const candidateId = user?._id || user?.id;
+  const socketRef = useRef(null);
+
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [stream, setStream] = useState(null);
+  const streamRef = useRef(null);
+  const currentRequestRef = useRef(0);
   const [permission, setPermission] = useState('pending'); // pending, granted, denied
   const [isMuted, setIsMuted] = useState(false);
 
@@ -24,21 +32,36 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
     };
   }, []);
 
+  // Bind video stream to element once DOM is updated and videoRef is initialized
+  useEffect(() => {
+    if (permission === 'granted' && stream && videoRef.current) {
+      videoRef.current.srcObject = stream;
+    }
+  }, [permission, stream, videoRef]);
+
   const startMedia = async () => {
+    const requestId = ++currentRequestRef.current;
     try {
       setPermission('pending');
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: { width: 320, height: 240 },
         audio: true,
       });
       
-      setStream(mediaStream);
-      setPermission('granted');
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
+      if (requestId !== currentRequestRef.current) {
+        mediaStream.getTracks().forEach(track => track.stop());
+        return;
       }
+
+      setStream(mediaStream);
+      streamRef.current = mediaStream;
+      setPermission('granted');
     } catch (err) {
+      if (requestId !== currentRequestRef.current) return;
       console.error('Proctor Media Error:', err);
       setPermission('denied');
       toast.error('Camera & Microphone access is mandatory for this exam.');
@@ -49,27 +72,175 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
   };
 
   const stopMedia = () => {
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-      setStream(null);
+    currentRequestRef.current++;
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
     }
+    setStream(null);
   };
 
-  // Periodic capture every 30 seconds
+  // Periodic capture every 10 seconds for real-time proctor database updates
   useEffect(() => {
     if (permission !== 'granted' || !stream) return;
 
+    // Capture immediately once permission is granted
+    captureFrame('PeriodicCapture');
+
     const interval = setInterval(() => {
       captureFrame('PeriodicCapture');
-    }, 30000);
+    }, 10000);
 
     return () => clearInterval(interval);
   }, [permission, stream]);
 
+  const peersRef = useRef({});
+
+  const initiateWebRPeerConnection = async (adminSocketId) => {
+    try {
+      if (peersRef.current[adminSocketId]) {
+        peersRef.current[adminSocketId].close();
+      }
+
+      const pc = new RTCPeerConnection({
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' }
+        ]
+      });
+
+      peersRef.current[adminSocketId] = pc;
+
+      // Add local tracks (webcam stream)
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => {
+          pc.addTrack(track, streamRef.current);
+        });
+      }
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate && socketRef.current) {
+          socketRef.current.emit('send-webrtc-signal', {
+            toSocketId: adminSocketId,
+            signalData: { type: 'ice', candidate: event.candidate },
+            candidateId,
+            examId
+          });
+        }
+      };
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      if (socketRef.current) {
+        socketRef.current.emit('send-webrtc-signal', {
+          toSocketId: adminSocketId,
+          signalData: { type: 'offer', sdp: offer },
+          candidateId,
+          examId
+        });
+      }
+    } catch (err) {
+      console.error('Failed to initiate WebRTC connection with admin:', err);
+    }
+  };
+
+  const handleWebRTCSignal = async (fromSocketId, signalData) => {
+    try {
+      const pc = peersRef.current[fromSocketId];
+      if (!pc) return;
+
+      if (signalData.type === 'answer') {
+        await pc.setRemoteDescription(new RTCSessionDescription(signalData.sdp));
+      } else if (signalData.type === 'ice') {
+        await pc.addIceCandidate(new RTCIceCandidate(signalData.candidate));
+      }
+    } catch (err) {
+      console.error('Error handling WebRTC signal:', err);
+    }
+  };
+
+  // Initialize Socket connection
+  useEffect(() => {
+    if (permission === 'granted' && candidateId) {
+      const socket = io(import.meta.env.VITE_API_URL || window.location.origin, {
+        path: '/socket.io'
+      });
+      socketRef.current = socket;
+
+      socket.emit('join-exam-session', { examId, candidateId });
+
+      socket.on('admin-online-ping', ({ adminSocketId }) => {
+        initiateWebRPeerConnection(adminSocketId);
+      });
+
+      socket.on('receive-webrtc-signal', ({ fromSocketId, signalData }) => {
+        handleWebRTCSignal(fromSocketId, signalData);
+      });
+
+      return () => {
+        // Clean up all peer connections
+        Object.keys(peersRef.current).forEach(id => {
+          if (peersRef.current[id]) {
+            peersRef.current[id].close();
+          }
+        });
+        peersRef.current = {};
+        socket.disconnect();
+        socketRef.current = null;
+      };
+    }
+  }, [permission, examId, candidateId]);
+
+  // Real-time WebSocket fallback streaming (every 5 seconds / 5000ms)
+  useEffect(() => {
+    if (permission !== 'granted' || !stream || !socketRef.current) return;
+
+    const captureAndEmitFrame = () => {
+      if (!videoRef.current || !canvasRef.current || !socketRef.current) return;
+      try {
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        const context = canvas.getContext('2d');
+
+        canvas.width = 240;
+        canvas.height = 180;
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.4);
+        
+        socketRef.current.emit('candidate-frame', {
+          examId,
+          candidateId,
+          imageData: dataUrl
+        });
+      } catch (err) {
+        console.error('Failed to emit socket frame:', err);
+      }
+    };
+
+    captureAndEmitFrame();
+    const interval = setInterval(captureAndEmitFrame, 5000);
+
+    return () => clearInterval(interval);
+  }, [permission, stream, candidateId, examId]);
+
   // Method to take a canvas snapshot and send it to the server
-  const captureFrame = async (type = 'PeriodicCapture') => {
+  const captureFrame = async (type = 'PeriodicCapture', silent = false) => {
     if (permission !== 'granted' || !videoRef.current || !canvasRef.current) {
-      console.warn('Skipping capture: media devices are not ready');
+      if (type !== 'PeriodicCapture') {
+        // Log violation to server without image if camera is not active/granted
+        try {
+          const res = await axios.post('/api/proctor/log-warning', { examId, type });
+          if (res.data.success && onWarningLogged && !silent) {
+            onWarningLogged(res.data.warningCount, type);
+          }
+        } catch (err) {
+          console.error('Failed to log camera-less violation:', err.message);
+        }
+      } else {
+        console.warn('Skipping periodic capture: media devices are not ready');
+      }
       return null;
     }
 
@@ -114,7 +285,7 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
               const res = await axios.post('/api/proctor/log-warning', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
               });
-              if (res.data.success && onWarningLogged) {
+              if (res.data.success && onWarningLogged && !silent) {
                 onWarningLogged(res.data.warningCount, type);
               }
               resolve(res.data.imagePath);
@@ -133,7 +304,7 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
 
   // Expose methods to parent components
   useImperativeHandle(ref, () => ({
-    captureViolation: (type) => captureFrame(type),
+    captureViolation: (type, silent = false) => captureFrame(type, silent),
     triggerSelfTest: () => {
       // Simulates face check
       const checks = ['FaceNotDetected', 'MultipleFaces', 'LookingAway'];

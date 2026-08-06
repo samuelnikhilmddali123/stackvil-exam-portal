@@ -14,7 +14,10 @@ import AdminCandidates from './pages/admin/Candidates';
 import AdminExams from './pages/admin/Exams';
 import AdminQuestions from './pages/admin/Questions';
 import AdminReports from './pages/admin/Reports';
+import AdminResultDetails from './pages/admin/ResultDetails';
 import AdminSettings from './pages/admin/Settings';
+import AdminLiveProctor from './pages/admin/LiveProctor';
+import AdminCreateCustomExam from './pages/admin/CreateCustomExam';
 
 // Candidate Pages
 import CandidateProfile from './pages/candidate/Profile';
@@ -71,7 +74,7 @@ const PublicRoute = ({ children }) => {
 
 function App() {
   return (
-    <Router>
+    <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <AuthProvider>
         <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
         <Routes>
@@ -93,9 +96,12 @@ function App() {
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<AdminDashboard />} />
             <Route path="candidates" element={<AdminCandidates />} />
+            <Route path="candidates/:candidateId/custom-exam" element={<AdminCreateCustomExam />} />
             <Route path="exams" element={<AdminExams />} />
             <Route path="questions" element={<AdminQuestions />} />
             <Route path="reports" element={<AdminReports />} />
+            <Route path="results/:candidateId/:examId" element={<AdminResultDetails />} />
+            <Route path="live-proctor" element={<AdminLiveProctor />} />
             <Route path="settings" element={<AdminSettings />} />
           </Route>
 

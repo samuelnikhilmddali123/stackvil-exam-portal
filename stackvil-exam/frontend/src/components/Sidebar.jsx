@@ -7,7 +7,8 @@ import {
   HelpCircle, 
   BarChart3, 
   Settings, 
-  GraduationCap
+  GraduationCap,
+  Radio
 } from 'lucide-react';
 
 const Sidebar = () => {
@@ -17,6 +18,7 @@ const Sidebar = () => {
     { name: 'Exams', path: 'exams', icon: BookOpen },
     { name: 'Question Bank', path: 'questions', icon: HelpCircle },
     { name: 'Reports', path: 'reports', icon: BarChart3 },
+    { name: 'Live Proctoring', path: 'live-proctor', icon: Radio },
     { name: 'Settings', path: 'settings', icon: Settings },
   ];
 

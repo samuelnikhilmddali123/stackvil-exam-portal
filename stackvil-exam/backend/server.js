@@ -47,8 +47,9 @@ app.use(
       const isDevelopment = process.env.NODE_ENV !== 'production';
       const isLocalhost = origin.includes('localhost') || origin.includes('127.0.0.1');
       const isNgrok = origin.includes('ngrok-free.app') || origin.includes('ngrok.io');
+      const isCloudflare = origin.includes('trycloudflare.com');
       
-      if (allowedOrigins.indexOf(origin) !== -1 || (isDevelopment && (isLocalhost || isNgrok))) {
+      if (allowedOrigins.indexOf(origin) !== -1 || (isDevelopment && (isLocalhost || isNgrok || isCloudflare))) {
         return callback(null, true);
       }
       
@@ -91,9 +92,77 @@ app.get('/', (req, res) => {
 app.use(notFound);
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 5000;
+const http = require('http');
+const { Server } = require('socket.io');
 
-const server = app.listen(PORT, () => {
+const PORT = process.env.PORT || 5000;
+const server = http.createServer(app);
+
+const io = new Server(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST'],
+  },
+});
+
+io.on('connection', (socket) => {
+  // Candidate joins their exam proctor session room
+  socket.on('join-exam-session', ({ examId, candidateId }) => {
+    socket.join(`exam-${examId}`);
+    socket.candidateId = candidateId;
+    socket.examId = examId;
+
+    // Notify admins that candidate is online for WebRTC
+    socket.broadcast.to('admin-proctor-room').emit('candidate-online-webrtc', {
+      socketId: socket.id,
+      candidateId,
+      examId
+    });
+  });
+
+  // Admin joins live proctor listening room
+  socket.on('join-admin-proctor', () => {
+    socket.join('admin-proctor-room');
+    // Tell all online candidates that admin is online to trigger offers
+    socket.broadcast.emit('admin-online-ping', { adminSocketId: socket.id });
+  });
+
+  // Relay WebRTC signals between candidate and admin
+  socket.on('send-webrtc-signal', ({ toSocketId, signalData, candidateId, examId }) => {
+    io.to(toSocketId).emit('receive-webrtc-signal', {
+      fromSocketId: socket.id,
+      signalData,
+      candidateId,
+      examId
+    });
+  });
+
+  // Admin responds directly to a newly connected candidate
+  socket.on('send-admin-ping-to-candidate', ({ toSocketId }) => {
+    io.to(toSocketId).emit('admin-online-ping', { adminSocketId: socket.id });
+  });
+
+  // Candidate streams real-time webcam frame (base64) - kept as fallback
+  socket.on('candidate-frame', ({ examId, candidateId, imageData }) => {
+    io.to('admin-proctor-room').emit('candidate-frame-update', {
+      candidateId,
+      examId,
+      imageData,
+    });
+  });
+
+  socket.on('disconnect', () => {
+    if (socket.candidateId && socket.examId) {
+      io.to('admin-proctor-room').emit('candidate-offline', {
+        candidateId: socket.candidateId,
+        examId: socket.examId,
+        socketId: socket.id
+      });
+    }
+  });
+});
+
+server.listen(PORT, () => {
   console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
   console.log(`Swagger docs available at http://localhost:${PORT}/api-docs`);
 });

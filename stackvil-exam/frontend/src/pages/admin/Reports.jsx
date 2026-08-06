@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { 
   FileText, 
@@ -18,6 +19,7 @@ import { Bar } from 'react-chartjs-2';
 import LoadingSkeleton from '../../components/LoadingSkeleton';
 
 const Reports = () => {
+  const navigate = useNavigate();
   const [exams, setExams] = useState([]);
   const [selectedExamId, setSelectedExamId] = useState('');
   const [reportData, setReportData] = useState(null);
@@ -308,6 +310,15 @@ const Reports = () => {
                         </td>
                         <td className="px-6 py-4 text-center">
                           <div className="flex items-center justify-center space-x-3">
+                            {/* View Result Details */}
+                            <button
+                              onClick={() => navigate(`/admin/results/${res.candidate?._id}/${selectedExamId}`)}
+                              disabled={!res.candidate}
+                              className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-lg transition disabled:cursor-not-allowed"
+                              title="View Result Details"
+                            >
+                              <Eye className="h-4.5 w-4.5" />
+                            </button>
                             {/* View Proctor logs button */}
                             <button
                               onClick={() => viewProctorLogs(res.candidate?._id, res.candidate?.name)}

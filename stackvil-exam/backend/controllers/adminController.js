@@ -494,7 +494,8 @@ const createCustomCandidateExam = async (req, res, next) => {
       codingTitle,
       codingTemplate,
       codingInput,
-      codingOutput
+      codingOutput,
+      codingProjectFiles
     } = req.body;
 
     const candidate = await User.findById(candidateId);
@@ -543,8 +544,21 @@ const createCustomCandidateExam = async (req, res, next) => {
       createdQuestions.push(codingQ);
     }
 
-    if (createdQuestions.length === 0) {
-      return res.status(400).json({ success: false, message: 'Please provide at least one round (Aptitude PDF, Technical PDF, or Coding Question)' });
+    let codingProjectObj = { files: {}, hasProject: false };
+    if (codingProjectFiles) {
+      try {
+        const parsed = typeof codingProjectFiles === 'string' ? JSON.parse(codingProjectFiles) : codingProjectFiles;
+        codingProjectObj = {
+          files: parsed,
+          hasProject: true
+        };
+      } catch (err) {
+        console.error('Failed to parse codingProjectFiles:', err);
+      }
+    }
+
+    if (createdQuestions.length === 0 && !codingProjectObj.hasProject) {
+      return res.status(400).json({ success: false, message: 'Please provide at least one round (Aptitude PDF, Technical PDF, or Coding Project Folder)' });
     }
 
     // Create the exam mapping
@@ -559,7 +573,8 @@ const createCustomCandidateExam = async (req, res, next) => {
       shuffleOptions: true,
       passingScore: 50,
       assignedCandidates: [candidateId],
-      status: 'Draft'
+      status: 'Draft',
+      codingProject: codingProjectObj
     });
 
     res.status(200).json({
@@ -600,6 +615,202 @@ const scheduleCandidateExam = async (req, res, next) => {
   }
 };
 
+/**
+ * @desc    Force submit a candidate's active exam session
+ * @route   POST /api/admin/exams/:examId/force-submit
+ * @access  Private (Admin/Superadmin)
+ */
+const forceSubmitCandidateExam = async (req, res, next) => {
+  try {
+    const { examId } = req.params;
+    const { candidateId } = req.body;
+
+    const exam = await Exam.findById(examId);
+    if (!exam) {
+      return res.status(404).json({ success: false, message: 'Exam not found' });
+    }
+
+    const candidate = await User.findById(candidateId);
+    if (!candidate) {
+      return res.status(404).json({ success: false, message: 'Candidate not found' });
+    }
+
+    // Check if result already exists
+    const existingResult = await Result.findOne({ candidate: candidateId, exam: examId });
+    if (existingResult) {
+      return res.status(400).json({ success: false, message: 'Exam already submitted' });
+    }
+
+    // Retrieve proctor logs warning count
+    const ProctorLog = require('../models/ProctorLog');
+    const proctorLog = await ProctorLog.findOne({ candidate: candidateId, exam: examId });
+    
+    let warningsCount = 0;
+    if (proctorLog && proctorLog.logs) {
+      const activeWarnings = proctorLog.logs.filter((l) => 
+        l.type !== 'PeriodicCapture' && l.warningNumber !== undefined
+      );
+      warningsCount = activeWarnings.length;
+    }
+
+    // Create a failed/terminated result document
+    const result = await Result.create({
+      candidate: candidateId,
+      exam: examId,
+      responses: [], // empty responses as they were force terminated
+      score: 0,
+      percentage: 0,
+      status: 'Fail',
+      totalTimeTaken: 0,
+      warningsCount: warningsCount,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Exam session for ${candidate.name} has been terminated and submitted.`,
+      result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Reset entire database and seed default values
+ * @route   POST /api/admin/reset-database
+ * @access  Private (Admin/Superadmin)
+ */
+const resetDatabase = async (req, res, next) => {
+  try {
+    // 1. Clear all collections
+    await User.deleteMany();
+    await Question.deleteMany();
+    await Exam.deleteMany();
+    await Setting.deleteMany();
+    await Result.deleteMany();
+    
+    // Lazy load ProctorLog model to avoid circular/missing dependencies
+    const ProctorLog = require('../models/ProctorLog');
+    await ProctorLog.deleteMany();
+
+    // 2. Create Portal Settings
+    await Setting.create({
+      companyName: 'Stackvil Solutions',
+      companyLogo: '',
+      smtpHost: 'smtp.mailtrap.io',
+      smtpPort: 2525,
+      smtpUser: '',
+      smtpPass: '',
+      passwordLength: 8,
+      requireSpecialChar: true,
+      theme: 'light',
+    });
+
+    // 3. Create Default Users
+    await User.create({
+      name: 'Stackvil Super Admin',
+      email: 'admin@stackvil.com',
+      password: 'password123',
+      role: 'superadmin',
+      department: 'IT Administration',
+    });
+
+    await User.create({
+      name: 'Stackvil HR Team',
+      email: 'hr@stackvil.com',
+      password: 'password123',
+      role: 'admin',
+      department: 'Human Resources',
+    });
+
+    // 4. Create Question Bank
+    const q1 = await Question.create({
+      text: 'Which programming language is predominantly used for frontend development in React applications?',
+      type: 'MCQ',
+      options: ['Python', 'C++', 'Java', 'JavaScript'],
+      correctAnswer: 'JavaScript',
+      category: 'Frontend Engineering',
+      difficulty: 'Easy',
+      marks: 1,
+    });
+
+    const q2 = await Question.create({
+      text: 'Identify all NoSQL databases from the options below. (Select all that apply)',
+      type: 'Checkbox',
+      options: ['MySQL', 'MongoDB', 'PostgreSQL', 'Redis'],
+      correctAnswer: ['MongoDB', 'Redis'],
+      category: 'Databases',
+      difficulty: 'Medium',
+      marks: 2,
+    });
+
+    const q3 = await Question.create({
+      text: 'HTTP stands for Hypertext Transfer Protocol and is stateful by default.',
+      type: 'True/False',
+      options: ['True', 'False'],
+      correctAnswer: 'False',
+      category: 'Networking',
+      difficulty: 'Easy',
+      marks: 1,
+    });
+
+    const q4 = await Question.create({
+      text: 'Explain briefly the concept and benefits of Virtual DOM in modern UI frameworks like React.',
+      type: 'Paragraph',
+      correctAnswer: 'react handles reconciliation using virtual dom updates',
+      category: 'Frontend Engineering',
+      difficulty: 'Medium',
+      marks: 3,
+    });
+
+    const q5 = await Question.create({
+      text: 'Write a JavaScript function named "add" that accepts two numeric arguments (a, b) and returns their sum.',
+      type: 'Coding',
+      correctAnswer: 'function add(a, b) {\n  return a + b;\n}',
+      codeTemplates: [
+        {
+          language: 'javascript',
+          template: 'function add(a, b) {\n  // Write your code here\n}',
+          testCases: [
+            { input: '5, 10', output: '15' },
+            { input: '-1, 2', output: '1' },
+          ],
+        },
+      ],
+      category: 'Coding Assessment',
+      difficulty: 'Medium',
+      marks: 5,
+    });
+
+    // 5. Create active evaluation exam
+    const today = new Date();
+    const nextWeek = new Date();
+    nextWeek.setDate(today.getDate() + 7);
+
+    const exam = await Exam.create({
+      title: 'Full Stack Engineer Evaluation',
+      description: 'Pre-employment screening exam evaluating JavaScript expertise, database knowledge, web systems theory, and coding execution speed.',
+      duration: 45,
+      startDate: today,
+      endDate: nextWeek,
+      questions: [q1._id, q2._id, q3._id, q4._id, q5._id],
+      randomizeQuestions: false,
+      shuffleOptions: false,
+      passingScore: 60,
+      assignedCandidates: [],
+      status: 'Active',
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Database has been successfully cleared and reset to default seed values!',
+      exam,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getDashboardStats,
   getCandidates,
@@ -612,4 +823,6 @@ module.exports = {
   updateSettings,
   createCustomCandidateExam,
   scheduleCandidateExam,
+  forceSubmitCandidateExam,
+  resetDatabase,
 };

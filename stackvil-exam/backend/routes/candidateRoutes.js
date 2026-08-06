@@ -5,6 +5,14 @@ const {
   submitExam,
   getCandidateResults,
   runCodingTest,
+  getRound1,
+  submitRound1,
+  getRound2,
+  submitRound2,
+  getRound3,
+  saveRound3Edits,
+  submitRound3,
+  getFinalResult,
 } = require('../controllers/candidateController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 
@@ -47,6 +55,16 @@ router.get('/exams/:id/start', startExam);
  */
 router.post('/exams/:id/submit', submitExam);
 router.post('/exams/:id/run-code', runCodingTest);
+
+// Round based routes
+router.get('/exams/:id/round/1', getRound1);
+router.post('/exams/:id/round/1/submit', submitRound1);
+router.get('/exams/:id/round/2', getRound2);
+router.post('/exams/:id/round/2/submit', submitRound2);
+router.get('/exams/:id/round/3', getRound3);
+router.post('/exams/:id/round/3/save', saveRound3Edits);
+router.post('/exams/:id/round/3/submit', submitRound3);
+router.get('/exams/:id/final-result', getFinalResult);
 
 /**
  * @swagger

@@ -52,31 +52,7 @@ const seedData = async () => {
       department: 'Human Resources',
     });
 
-    const cand1 = await User.create({
-      name: 'John Doe',
-      email: 'john@stackvil.com',
-      password: 'password123',
-      role: 'candidate',
-      department: 'Engineering',
-    });
-
-    const cand2 = await User.create({
-      name: 'Jane Smith',
-      email: 'jane@stackvil.com',
-      password: 'password123',
-      role: 'candidate',
-      department: 'Product Development',
-    });
-
-    const candDemo = await User.create({
-      name: 'Demo Candidate',
-      email: 'candidate@stackvil.com',
-      password: 'password123',
-      role: 'candidate',
-      department: 'Engineering',
-    });
-
-    console.log('Users (SuperAdmin, Admin, Candidates) seeded.');
+    console.log('Users (SuperAdmin, Admin) seeded.');
 
     // 3. Create Question Bank
     const q1 = await Question.create({
@@ -154,7 +130,7 @@ const seedData = async () => {
       randomizeQuestions: false,
       shuffleOptions: false,
       passingScore: 60, // 60%
-      assignedCandidates: [cand1._id, cand2._id, candDemo._id],
+      assignedCandidates: [],
       status: 'Active',
     });
 
