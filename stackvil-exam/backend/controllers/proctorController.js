@@ -50,6 +50,17 @@ const logWarning = async (req, res, next) => {
       { $set: { warningsCount: nextWarningNumber } }
     );
 
+    // Emit socket event to admin proctor room in real-time
+    if (req.app && req.app.get('io')) {
+      req.app.get('io').to('admin-proctor-room').emit('candidate-warning-update', {
+        candidateId: userId,
+        examId,
+        warningsCount: nextWarningNumber,
+        lastActivityType: type,
+        lastActivityTime: Date.now(),
+      });
+    }
+
     res.status(200).json({
       success: true,
       message: `Violation recorded: ${type}`,
@@ -91,18 +102,31 @@ const uploadFrame = async (req, res, next) => {
       });
     }
 
+    const imagePath = `/uploads/proctor/${req.file.filename}`;
+
     proctorLog.logs.push({
       type: 'FaceNotDetected', // Trigger default types in validation loop or generic capture representation
       timestamp: Date.now(),
-      imagePath: `/uploads/proctor/${req.file.filename}`,
+      imagePath,
     });
 
     await proctorLog.save();
 
+    // Emit socket event to admin proctor room in real-time
+    if (req.app && req.app.get('io')) {
+      req.app.get('io').to('admin-proctor-room').emit('candidate-frame-update', {
+        candidateId: userId,
+        examId,
+        imagePath,
+        lastActivityType: 'PeriodicCapture',
+        lastActivityTime: Date.now(),
+      });
+    }
+
     res.status(200).json({
       success: true,
       message: 'Frame uploaded and registered',
-      imagePath: `/uploads/proctor/${req.file.filename}`,
+      imagePath,
     });
   } catch (error) {
     if (req.file && fs.existsSync(req.file.path)) {
@@ -156,13 +180,12 @@ const getLiveProctorSessions = async (req, res, next) => {
       const hasResult = await Result.exists({ candidate: log.candidate._id, exam: log.exam._id });
       if (hasResult) continue; // Already submitted, not active
 
-      // 3. Verify if the candidate has recent activity (within last 3 minutes)
+      // 3. Verify if the candidate has activity (within last 15 minutes or updatedAt)
       const logsArray = log.logs || [];
-      if (logsArray.length === 0) continue;
-
-      const lastLog = logsArray[logsArray.length - 1];
-      const timeSinceLastActivity = Date.now() - new Date(lastLog.timestamp).getTime();
-      const isActive = timeSinceLastActivity < 3 * 60 * 1000; // 3 minutes window
+      const lastLog = logsArray.length > 0 ? logsArray[logsArray.length - 1] : null;
+      const lastTimestamp = lastLog ? new Date(lastLog.timestamp).getTime() : new Date(log.updatedAt || log.createdAt).getTime();
+      const timeSinceLastActivity = Date.now() - lastTimestamp;
+      const isActive = timeSinceLastActivity < 15 * 60 * 1000; // 15 minutes active window
 
       if (isActive) {
         // Find latest log item with an image (periodic capture or violation)
@@ -183,8 +206,8 @@ const getLiveProctorSessions = async (req, res, next) => {
           examTitle: log.exam.title,
           warningsCount: warnings.length,
           latestImagePath: latestImageLog ? latestImageLog.imagePath : null,
-          lastActivityType: lastLog.type,
-          lastActivityTime: lastLog.timestamp,
+          lastActivityType: lastLog ? lastLog.type : 'Exam Started',
+          lastActivityTime: lastTimestamp,
         });
       }
     }

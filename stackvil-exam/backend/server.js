@@ -105,12 +105,31 @@ const io = new Server(server, {
   },
 });
 
+app.set('io', io);
+
+const ProctorLog = require('./models/ProctorLog');
+
 io.on('connection', (socket) => {
   // Candidate joins their exam proctor session room
-  socket.on('join-exam-session', ({ examId, candidateId }) => {
+  socket.on('join-exam-session', async ({ examId, candidateId }) => {
     socket.join(`exam-${examId}`);
     socket.candidateId = candidateId;
     socket.examId = examId;
+
+    try {
+      if (candidateId && examId) {
+        let proctorLog = await ProctorLog.findOne({ candidate: candidateId, exam: examId });
+        if (!proctorLog) {
+          await ProctorLog.create({
+            candidate: candidateId,
+            exam: examId,
+            logs: [{ type: 'Exam Started', timestamp: Date.now() }]
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Error auto-creating proctor log on socket join:', err.message);
+    }
 
     // Notify admins that candidate is online for WebRTC
     socket.broadcast.to('admin-proctor-room').emit('candidate-online-webrtc', {

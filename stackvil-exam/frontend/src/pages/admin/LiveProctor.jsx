@@ -39,7 +39,8 @@ const LiveProctor = () => {
 
   const handleAdminWebRTCSignal = async (fromSocketId, signalData, candidateId, examId) => {
     try {
-      let pc = pcsRef.current[candidateId];
+      const cIdStr = String(candidateId);
+      let pc = pcsRef.current[cIdStr];
 
       if (signalData.type === 'offer') {
         if (pc) {
@@ -53,13 +54,13 @@ const LiveProctor = () => {
           ]
         });
 
-        pcsRef.current[candidateId] = pc;
+        pcsRef.current[cIdStr] = pc;
 
         pc.ontrack = (event) => {
           const remoteStream = event.streams[0];
           setCandidateStreams(prev => ({
             ...prev,
-            [candidateId]: remoteStream
+            [cIdStr]: remoteStream
           }));
         };
 
@@ -94,7 +95,7 @@ const LiveProctor = () => {
     }
   };
 
-  // Real-time WebSocket connection to receive WebRTC video streams
+  // Real-time WebSocket connection to receive WebRTC video streams & warning updates
   useEffect(() => {
     const socket = io(import.meta.env.VITE_API_URL || window.location.origin, {
       path: '/socket.io'
@@ -105,41 +106,75 @@ const LiveProctor = () => {
 
     socket.on('candidate-online-webrtc', ({ socketId, candidateId }) => {
       socket.emit('send-admin-ping-to-candidate', { toSocketId: socketId });
+      fetchLiveSessions(true);
     });
 
     socket.on('receive-webrtc-signal', ({ fromSocketId, signalData, candidateId, examId }) => {
       handleAdminWebRTCSignal(fromSocketId, signalData, candidateId, examId);
     });
 
-    socket.on('candidate-frame-update', ({ candidateId, examId, imageData }) => {
+    socket.on('candidate-warning-update', ({ candidateId, examId, warningsCount, lastActivityType, lastActivityTime }) => {
       setSessions(prevSessions => {
-        return prevSessions.map(session => {
-          if (session.candidateId === candidateId && session.examId === examId) {
+        let found = false;
+        const updated = prevSessions.map(session => {
+          if (String(session.candidateId) === String(candidateId) && String(session.examId) === String(examId)) {
+            found = true;
             return {
               ...session,
-              latestBase64Frame: imageData,
-              lastActivityTime: Date.now()
+              warningsCount,
+              lastActivityType: lastActivityType || session.lastActivityType,
+              lastActivityTime: lastActivityTime || Date.now()
             };
           }
           return session;
         });
+
+        if (!found) {
+          fetchLiveSessions(true);
+        }
+        return updated;
+      });
+    });
+
+    socket.on('candidate-frame-update', ({ candidateId, examId, imageData, imagePath, lastActivityType, lastActivityTime }) => {
+      setSessions(prevSessions => {
+        let found = false;
+        const updated = prevSessions.map(session => {
+          if (String(session.candidateId) === String(candidateId) && String(session.examId) === String(examId)) {
+            found = true;
+            return {
+              ...session,
+              latestBase64Frame: imageData || session.latestBase64Frame,
+              latestImagePath: imagePath || session.latestImagePath,
+              lastActivityType: lastActivityType || session.lastActivityType || 'PeriodicCapture',
+              lastActivityTime: lastActivityTime || Date.now()
+            };
+          }
+          return session;
+        });
+
+        if (!found) {
+          fetchLiveSessions(true);
+        }
+        return updated;
       });
     });
 
     socket.on('candidate-offline', ({ candidateId, examId }) => {
-      if (pcsRef.current[candidateId]) {
-        pcsRef.current[candidateId].close();
-        delete pcsRef.current[candidateId];
+      const cIdStr = String(candidateId);
+      if (pcsRef.current[cIdStr]) {
+        pcsRef.current[cIdStr].close();
+        delete pcsRef.current[cIdStr];
       }
       setCandidateStreams(prev => {
         const next = { ...prev };
-        delete next[candidateId];
+        delete next[cIdStr];
         return next;
       });
 
       setSessions(prevSessions => {
         return prevSessions.map(session => {
-          if (session.candidateId === candidateId && session.examId === examId) {
+          if (String(session.candidateId) === cIdStr && String(session.examId) === String(examId)) {
             return {
               ...session,
               latestBase64Frame: null,
@@ -170,7 +205,7 @@ const LiveProctor = () => {
         setSessions(prevSessions => {
           const freshSessions = res.data.sessions || [];
           return freshSessions.map(fresh => {
-            const match = prevSessions.find(p => p.candidateId === fresh.candidateId && p.examId === fresh.examId);
+            const match = prevSessions.find(p => String(p.candidateId) === String(fresh.candidateId) && String(p.examId) === String(fresh.examId));
             return match ? { ...fresh, latestBase64Frame: match.latestBase64Frame } : fresh;
           });
         });

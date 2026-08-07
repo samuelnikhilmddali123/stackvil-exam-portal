@@ -16,16 +16,6 @@ const proctorLogSchema = new mongoose.Schema(
       {
         type: {
           type: String,
-          enum: [
-            'TabSwitch',
-            'FullscreenExit',
-            'FaceNotDetected',
-            'MultipleFaces',
-            'LookingAway',
-            'CameraDisabled',
-            'MicDisabled',
-            'InternetDisconnect',
-          ],
           required: true,
         },
         timestamp: {
