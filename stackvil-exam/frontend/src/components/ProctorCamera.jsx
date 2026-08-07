@@ -47,9 +47,15 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
         streamRef.current.getTracks().forEach(track => track.stop());
         streamRef.current = null;
       }
+
+      // Optimize WebRTC camera constraints: 640x480 at 15-20 FPS
       const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 320, height: 240 },
-        audio: true,
+        video: {
+          width: { ideal: 640, max: 1280 },
+          height: { ideal: 480, max: 720 },
+          frameRate: { ideal: 15, max: 20 }
+        },
+        audio: false,
       });
       
       if (requestId !== currentRequestRef.current) {
@@ -57,14 +63,42 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
         return;
       }
 
+      // Monitor camera track ending / turn off
+      const videoTrack = mediaStream.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.onended = () => {
+          console.warn('Camera stream stopped unexpectedly.');
+          setPermission('denied');
+          toast.error('Webcam stream was disconnected or turned off!');
+          if (socketRef.current) {
+            socketRef.current.emit('candidate-webcam-status', {
+              examId,
+              candidateId,
+              status: 'stopped'
+            });
+          }
+          if (onPermissionDenied) {
+            onPermissionDenied('Camera Stopped');
+          }
+        };
+      }
+
       setStream(mediaStream);
       streamRef.current = mediaStream;
       setPermission('granted');
+
+      if (socketRef.current) {
+        socketRef.current.emit('candidate-webcam-status', {
+          examId,
+          candidateId,
+          status: 'active'
+        });
+      }
     } catch (err) {
       if (requestId !== currentRequestRef.current) return;
       console.error('Proctor Media Error:', err);
       setPermission('denied');
-      toast.error('Camera & Microphone access is mandatory for this exam.');
+      toast.error('Camera access is mandatory for live proctoring.');
       if (onPermissionDenied) {
         onPermissionDenied(err.name === 'NotAllowedError' ? 'Permission Denied' : 'Device Error');
       }
@@ -80,21 +114,21 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
     setStream(null);
   };
 
-  // Periodic capture every 10 seconds for real-time proctor database updates
+  // Periodic capture for audit log every 30 seconds (not high-frequency base64 spam)
   useEffect(() => {
     if (permission !== 'granted' || !stream) return;
 
-    // Capture immediately once permission is granted
     captureFrame('PeriodicCapture');
 
     const interval = setInterval(() => {
       captureFrame('PeriodicCapture');
-    }, 10000);
+    }, 30000);
 
     return () => clearInterval(interval);
   }, [permission, stream]);
 
   const peersRef = useRef({});
+  const iceQueuesRef = useRef({});
 
   const initiateWebRPeerConnection = async (adminSocketId) => {
     try {
@@ -110,11 +144,23 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
       });
 
       peersRef.current[adminSocketId] = pc;
+      iceQueuesRef.current[adminSocketId] = [];
 
-      // Add local tracks (webcam stream)
+      // Add local video track with adaptive bitrate parameters
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => {
-          pc.addTrack(track, streamRef.current);
+          const sender = pc.addTrack(track, streamRef.current);
+          if (sender && sender.track && sender.track.kind === 'video') {
+            try {
+              const params = sender.getParameters();
+              if (!params.encodings) params.encodings = [{}];
+              params.encodings[0].maxBitrate = 400000; // 400 kbps adaptive bitrate
+              params.encodings[0].maxFramerate = 20;
+              sender.setParameters(params).catch(e => console.warn('Bitrate param set error:', e));
+            } catch (e) {
+              console.warn('Bitrate error:', e);
+            }
+          }
         });
       }
 
@@ -124,7 +170,8 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
             toSocketId: adminSocketId,
             signalData: { type: 'ice', candidate: event.candidate },
             candidateId,
-            examId
+            examId,
+            streamType: 'camera'
           });
         }
       };
@@ -137,7 +184,8 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
           toSocketId: adminSocketId,
           signalData: { type: 'offer', sdp: offer },
           candidateId,
-          examId
+          examId,
+          streamType: 'camera'
         });
       }
     } catch (err) {
@@ -152,8 +200,20 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
 
       if (signalData.type === 'answer') {
         await pc.setRemoteDescription(new RTCSessionDescription(signalData.sdp));
+        // Flush queued ICE candidates
+        const queue = iceQueuesRef.current[fromSocketId] || [];
+        for (const candidate of queue) {
+          await pc.addIceCandidate(candidate).catch(e => console.warn('ICE add error:', e));
+        }
+        iceQueuesRef.current[fromSocketId] = [];
       } else if (signalData.type === 'ice') {
-        await pc.addIceCandidate(new RTCIceCandidate(signalData.candidate));
+        const iceCandidate = new RTCIceCandidate(signalData.candidate);
+        if (pc.remoteDescription && pc.remoteDescription.type) {
+          await pc.addIceCandidate(iceCandidate).catch(e => console.warn('ICE candidate add error:', e));
+        } else {
+          if (!iceQueuesRef.current[fromSocketId]) iceQueuesRef.current[fromSocketId] = [];
+          iceQueuesRef.current[fromSocketId].push(iceCandidate);
+        }
       }
     } catch (err) {
       console.error('Error handling WebRTC signal:', err);
@@ -168,62 +228,31 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
       });
       socketRef.current = socket;
 
-      socket.emit('join-exam-session', { examId, candidateId });
+      socket.emit('join-exam-session', { examId, candidateId, streamType: 'camera' });
 
       socket.on('admin-online-ping', ({ adminSocketId }) => {
         initiateWebRPeerConnection(adminSocketId);
       });
 
-      socket.on('receive-webrtc-signal', ({ fromSocketId, signalData }) => {
-        handleWebRTCSignal(fromSocketId, signalData);
+      socket.on('receive-webrtc-signal', ({ fromSocketId, signalData, streamType }) => {
+        if (!streamType || streamType === 'camera') {
+          handleWebRTCSignal(fromSocketId, signalData);
+        }
       });
 
       return () => {
-        // Clean up all peer connections
         Object.keys(peersRef.current).forEach(id => {
           if (peersRef.current[id]) {
             peersRef.current[id].close();
           }
         });
         peersRef.current = {};
+        iceQueuesRef.current = {};
         socket.disconnect();
         socketRef.current = null;
       };
     }
   }, [permission, examId, candidateId]);
-
-  // Real-time WebSocket fallback streaming (every 5 seconds / 5000ms)
-  useEffect(() => {
-    if (permission !== 'granted' || !stream || !socketRef.current) return;
-
-    const captureAndEmitFrame = () => {
-      if (!videoRef.current || !canvasRef.current || !socketRef.current) return;
-      try {
-        const video = videoRef.current;
-        const canvas = canvasRef.current;
-        const context = canvas.getContext('2d');
-
-        canvas.width = 240;
-        canvas.height = 180;
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.4);
-        
-        socketRef.current.emit('candidate-frame', {
-          examId,
-          candidateId,
-          imageData: dataUrl
-        });
-      } catch (err) {
-        console.error('Failed to emit socket frame:', err);
-      }
-    };
-
-    captureAndEmitFrame();
-    const interval = setInterval(captureAndEmitFrame, 5000);
-
-    return () => clearInterval(interval);
-  }, [permission, stream, candidateId, examId]);
 
   // Method to take a canvas snapshot and send it to the server
   const captureFrame = async (type = 'PeriodicCapture', silent = false) => {

@@ -505,7 +505,7 @@ const getRound1 = async (req, res, next) => {
     }
 
     // Verify assigned
-    const isAssigned = exam.assignedCandidates.some(c => c.toString() === userId.toString());
+    const isAssigned = !exam.assignedCandidates || exam.assignedCandidates.length === 0 || exam.assignedCandidates.some(c => c.toString() === userId.toString());
     if (!isAssigned) {
       return res.status(403).json({ success: false, message: 'You are not assigned to this exam' });
     }

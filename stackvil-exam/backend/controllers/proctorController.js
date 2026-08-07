@@ -176,19 +176,21 @@ const getLiveProctorSessions = async (req, res, next) => {
     for (const log of logs) {
       if (!log.candidate || !log.exam) continue;
 
-      // 2. Check if a corresponding Result exists
-      const hasResult = await Result.exists({ candidate: log.candidate._id, exam: log.exam._id });
-      if (hasResult) continue; // Already submitted, not active
+      // 2. Check if a corresponding Result exists and is fully submitted/completed
+      const result = await Result.findOne({ candidate: log.candidate._id, exam: log.exam._id });
+      if (result && result.submittedAt && result.status !== 'Pending') {
+        continue; // Fully submitted/completed exam session, skip
+      }
 
-      // 3. Verify if the candidate has activity (within last 15 minutes or updatedAt)
+      // 3. Verify if candidate is active (within last 30 minutes)
       const logsArray = log.logs || [];
       const lastLog = logsArray.length > 0 ? logsArray[logsArray.length - 1] : null;
       const lastTimestamp = lastLog ? new Date(lastLog.timestamp).getTime() : new Date(log.updatedAt || log.createdAt).getTime();
       const timeSinceLastActivity = Date.now() - lastTimestamp;
-      const isActive = timeSinceLastActivity < 15 * 60 * 1000; // 15 minutes active window
+      const isActive = timeSinceLastActivity < 30 * 60 * 1000; // 30 minutes active window
 
       if (isActive) {
-        // Find latest log item with an image (periodic capture or violation)
+        // Find latest log item with an image
         const logsWithImage = logsArray.filter(l => l.imagePath);
         const latestImageLog = logsWithImage.length > 0 ? logsWithImage[logsWithImage.length - 1] : null;
 
@@ -201,12 +203,12 @@ const getLiveProctorSessions = async (req, res, next) => {
           candidateId: log.candidate._id,
           candidateName: log.candidate.name,
           candidateEmail: log.candidate.email,
-          candidateDepartment: log.candidate.department || 'General',
+          candidateDepartment: log.candidate.department || 'Engineering',
           examId: log.exam._id,
           examTitle: log.exam.title,
-          warningsCount: warnings.length,
+          warningsCount: result ? (result.warningsCount || warnings.length) : warnings.length,
           latestImagePath: latestImageLog ? latestImageLog.imagePath : null,
-          lastActivityType: lastLog ? lastLog.type : 'Exam Started',
+          lastActivityType: lastLog ? lastLog.type : 'Exam Active',
           lastActivityTime: lastTimestamp,
         });
       }

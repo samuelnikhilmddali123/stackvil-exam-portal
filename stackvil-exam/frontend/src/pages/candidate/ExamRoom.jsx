@@ -23,7 +23,7 @@ import QuestionPalette from '../../components/QuestionPalette';
 import WarningModal from '../../components/WarningModal';
 import CodeEditor from '../../components/CodeEditor';
 import LoadingSkeleton from '../../components/LoadingSkeleton';
-import VSCodeWorkspace from '../../components/vscode/VSCodeWorkspace';
+import Round3VSCodeView from '../../components/vscode/Round3VSCodeView';
 
 const ExamRoom = () => {
   const { examId } = useParams();
@@ -302,7 +302,7 @@ const ExamRoom = () => {
   };
 
   const handleVisibilityChange = () => {
-    if (document.hidden) {
+    if (document.hidden && currentRound !== 3) {
       triggerViolation('Tab Switch Violation');
     }
   };
@@ -310,7 +310,7 @@ const ExamRoom = () => {
   const handleFullscreenChange = () => {
     const isFull = !!(document.fullscreenElement || document.webkitFullscreenElement);
     setIsFullscreen(isFull);
-    if (!isFull && isExamActive) {
+    if (!isFull && isExamActive && currentRound !== 3) {
       triggerViolation('Fullscreen Mode Exit');
     }
   };
@@ -588,14 +588,14 @@ const ExamRoom = () => {
     return doc;
   };
 
-  const performRoundSubmission = async (warns = warningsCount) => {
+  const performRoundSubmission = async (warns = warningsCount, customFiles = null) => {
     try {
       setIsSubmitting(true);
       setIsExamActive(false);
       const totalTimeTaken = Math.round((Date.now() - startTimeRef.current) / 1000);
 
       const payload = currentRound === 3 ? {
-        files: round3Files,
+        files: customFiles || round3Files,
         totalTimeTaken,
         warningsCount: warns
       } : {
@@ -652,42 +652,12 @@ const ExamRoom = () => {
               <CheckCircle className="h-10 w-10 text-emerald-500 animate-bounce" />
             </div>
             <h2 className="text-2xl font-extrabold tracking-tight">Round 1 Completed Successfully</h2>
-            <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Aptitude Assessment Completed</p>
+            <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Aptitude Assessment Submitted</p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 text-xs font-semibold">
-            <div className="p-4 bg-slate-950 border border-slate-850 rounded-2xl space-y-1">
-              <span className="text-slate-500 block uppercase text-[10px]">Round Name</span>
-              <span className="text-sm font-bold text-slate-200">Aptitude Assessment</span>
-            </div>
-            <div className="p-4 bg-slate-950 border border-slate-850 rounded-2xl space-y-1">
-              <span className="text-slate-500 block uppercase text-[10px]">Total Questions</span>
-              <span className="text-sm font-bold text-slate-200">30 Questions</span>
-            </div>
-            <div className="p-4 bg-slate-950 border border-slate-850 rounded-2xl space-y-1">
-              <span className="text-slate-500 block uppercase text-[10px]">Score Obtained</span>
-              <span className="text-sm font-bold text-slate-200">{round1Stats?.score || 0} Marks</span>
-            </div>
-            <div className="p-4 bg-slate-950 border border-slate-850 rounded-2xl space-y-1">
-              <span className="text-slate-500 block uppercase text-[10px]">Percentage</span>
-              <span className={`text-sm font-bold ${round1Stats?.status === 'Pass' ? 'text-emerald-500' : 'text-rose-500'}`}>
-                {round1Stats?.percentage?.toFixed(1) || 0}%
-              </span>
-            </div>
-            <div className="p-4 bg-slate-950 border border-slate-850 rounded-2xl space-y-1">
-              <span className="text-slate-500 block uppercase text-[10px]">Time Taken</span>
-              <span className="text-sm font-bold text-slate-200">
-                {Math.floor((round1Stats?.totalTimeTaken || 0) / 60)}m {(round1Stats?.totalTimeTaken || 0) % 60}s
-              </span>
-            </div>
-            <div className="p-4 bg-slate-950 border border-slate-850 rounded-2xl space-y-1">
-              <span className="text-slate-500 block uppercase text-[10px]">Round Status</span>
-              <span className={`px-2 py-0.5 rounded text-[10px] inline-block font-extrabold ${
-                round1Stats?.status === 'Pass' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20' : 'bg-rose-50 text-rose-600 dark:bg-rose-950/20'
-              }`}>
-                {round1Stats?.status?.toUpperCase()}
-              </span>
-            </div>
+          <div className="p-4 bg-slate-950 border border-slate-850 rounded-2xl space-y-2 text-center text-xs">
+            <p className="text-slate-300 font-semibold">Your responses for Round 1 have been recorded successfully.</p>
+            <p className="text-slate-500">Evaluation results are processed confidentially by the administration. You may now proceed to Round 2.</p>
           </div>
 
           <div className="pt-2">
@@ -712,42 +682,12 @@ const ExamRoom = () => {
               <CheckCircle className="h-10 w-10 text-emerald-500 animate-bounce" />
             </div>
             <h2 className="text-2xl font-extrabold tracking-tight">Round 2 Completed Successfully</h2>
-            <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Technical Assessment Completed</p>
+            <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Technical Assessment Submitted</p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 text-xs font-semibold">
-            <div className="p-4 bg-slate-950 border border-slate-850 rounded-2xl space-y-1">
-              <span className="text-slate-500 block uppercase text-[10px]">Round Name</span>
-              <span className="text-sm font-bold text-slate-200">Technical Assessment</span>
-            </div>
-            <div className="p-4 bg-slate-950 border border-slate-850 rounded-2xl space-y-1">
-              <span className="text-slate-500 block uppercase text-[10px]">Total Questions</span>
-              <span className="text-sm font-bold text-slate-200">30 Questions</span>
-            </div>
-            <div className="p-4 bg-slate-950 border border-slate-850 rounded-2xl space-y-1">
-              <span className="text-slate-500 block uppercase text-[10px]">Score Obtained</span>
-              <span className="text-sm font-bold text-slate-200">{round2Stats?.score || 0} Marks</span>
-            </div>
-            <div className="p-4 bg-slate-950 border border-slate-850 rounded-2xl space-y-1">
-              <span className="text-slate-500 block uppercase text-[10px]">Percentage</span>
-              <span className={`text-sm font-bold ${round2Stats?.status === 'Pass' ? 'text-emerald-500' : 'text-rose-500'}`}>
-                {round2Stats?.percentage?.toFixed(1) || 0}%
-              </span>
-            </div>
-            <div className="p-4 bg-slate-950 border border-slate-850 rounded-2xl space-y-1">
-              <span className="text-slate-500 block uppercase text-[10px]">Time Taken</span>
-              <span className="text-sm font-bold text-slate-200">
-                {Math.floor((round2Stats?.totalTimeTaken || 0) / 60)}m {(round2Stats?.totalTimeTaken || 0) % 60}s
-              </span>
-            </div>
-            <div className="p-4 bg-slate-950 border border-slate-850 rounded-2xl space-y-1">
-              <span className="text-slate-500 block uppercase text-[10px]">Round Status</span>
-              <span className={`px-2 py-0.5 rounded text-[10px] inline-block font-extrabold ${
-                round2Stats?.status === 'Pass' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20' : 'bg-rose-50 text-rose-600 dark:bg-rose-950/20'
-              }`}>
-                {round2Stats?.status?.toUpperCase()}
-              </span>
-            </div>
+          <div className="p-4 bg-slate-950 border border-slate-850 rounded-2xl space-y-2 text-center text-xs">
+            <p className="text-slate-300 font-semibold">Your responses for Round 2 have been recorded successfully.</p>
+            <p className="text-slate-500">Evaluation results are processed confidentially by the administration. You may now proceed to Round 3 (Coding Assessment).</p>
           </div>
 
           <div className="pt-2">
@@ -765,10 +705,10 @@ const ExamRoom = () => {
 
   if (currentRound === 3) {
     return (
-      <VSCodeWorkspace
+      <Round3VSCodeView
+        examId={examId}
         files={round3Files}
-        onSaveFile={(updatedFiles) => setRound3Files(updatedFiles)}
-        onSubmitProject={handleManualSubmit}
+        onSubmitProject={(submittedFiles) => performRoundSubmission(warningsCount, submittedFiles)}
         examTitle={exam?.title || 'Coding Assessment'}
         durationMinutes={60}
         timeLeftSeconds={timeLeft}

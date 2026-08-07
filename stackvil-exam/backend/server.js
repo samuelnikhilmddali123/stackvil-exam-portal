@@ -111,7 +111,7 @@ const ProctorLog = require('./models/ProctorLog');
 
 io.on('connection', (socket) => {
   // Candidate joins their exam proctor session room
-  socket.on('join-exam-session', async ({ examId, candidateId }) => {
+  socket.on('join-exam-session', async ({ examId, candidateId, streamType = 'camera' }) => {
     socket.join(`exam-${examId}`);
     socket.candidateId = candidateId;
     socket.examId = examId;
@@ -123,45 +123,70 @@ io.on('connection', (socket) => {
           await ProctorLog.create({
             candidate: candidateId,
             exam: examId,
-            logs: [{ type: 'Exam Started', timestamp: Date.now() }]
+            logs: [{ type: 'Exam Active', timestamp: Date.now() }]
           });
+        } else {
+          proctorLog.updatedAt = new Date();
+          await proctorLog.save();
         }
       }
     } catch (err) {
       console.error('Error auto-creating proctor log on socket join:', err.message);
     }
 
-    // Notify admins that candidate is online for WebRTC
+    // Notify admins that candidate is online for WebRTC stream
     socket.broadcast.to('admin-proctor-room').emit('candidate-online-webrtc', {
       socketId: socket.id,
       candidateId,
-      examId
+      examId,
+      streamType
     });
   });
 
   // Admin joins live proctor listening room
   socket.on('join-admin-proctor', () => {
     socket.join('admin-proctor-room');
-    // Tell all online candidates that admin is online to trigger offers
+    // Ping all online candidates to initiate targeted peer connection offer
     socket.broadcast.emit('admin-online-ping', { adminSocketId: socket.id });
   });
 
-  // Relay WebRTC signals between candidate and admin
-  socket.on('send-webrtc-signal', ({ toSocketId, signalData, candidateId, examId }) => {
+  // Relay WebRTC signals between candidate and admin (with streamType)
+  socket.on('send-webrtc-signal', ({ toSocketId, signalData, candidateId, examId, streamType = 'camera' }) => {
     io.to(toSocketId).emit('receive-webrtc-signal', {
       fromSocketId: socket.id,
       signalData,
       candidateId,
-      examId
+      examId,
+      streamType
     });
   });
 
-  // Admin responds directly to a newly connected candidate
-  socket.on('send-admin-ping-to-candidate', ({ toSocketId }) => {
-    io.to(toSocketId).emit('admin-online-ping', { adminSocketId: socket.id });
+  // Admin responds directly to a specific candidate
+  socket.on('send-admin-ping-to-candidate', ({ toSocketId, streamType = 'camera' }) => {
+    io.to(toSocketId).emit('admin-online-ping', { adminSocketId: socket.id, streamType });
   });
 
-  // Candidate streams real-time webcam frame (base64) - kept as fallback
+  // Candidate screenshare or webcam stream status notifications
+  socket.on('candidate-screenshare-status', ({ examId, candidateId, status, isEntireScreen }) => {
+    io.to('admin-proctor-room').emit('candidate-screenshare-alert', {
+      candidateId,
+      examId,
+      status, // 'active' | 'stopped' | 'invalid_surface'
+      isEntireScreen,
+      timestamp: Date.now()
+    });
+  });
+
+  socket.on('candidate-webcam-status', ({ examId, candidateId, status }) => {
+    io.to('admin-proctor-room').emit('candidate-webcam-alert', {
+      candidateId,
+      examId,
+      status, // 'active' | 'stopped'
+      timestamp: Date.now()
+    });
+  });
+
+  // Candidate streams real-time fallback image frame if needed
   socket.on('candidate-frame', ({ examId, candidateId, imageData }) => {
     io.to('admin-proctor-room').emit('candidate-frame-update', {
       candidateId,

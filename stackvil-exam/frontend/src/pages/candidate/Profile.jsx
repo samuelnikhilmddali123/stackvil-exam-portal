@@ -194,38 +194,17 @@ const Profile = () => {
                         {res.exam ? res.exam.title : 'Deleted Exam'}
                       </h4>
                       <p className="text-[10px] text-slate-400">
-                        Completed: {new Date(res.submittedAt).toLocaleDateString()}
+                        Submitted: {new Date(res.submittedAt).toLocaleDateString()}
                       </p>
                     </div>
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                      res.status === 'Pass' 
-                        ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20' 
-                        : 'bg-rose-50 text-rose-600 dark:bg-rose-950/20'
-                    }`}>
-                      {res.status}
+                    <span className="px-2.5 py-1 bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 rounded-full text-[10px] font-bold">
+                      Submitted / Under Evaluation
                     </span>
                   </div>
 
-                  {/* Scores breakdown */}
-                  <div className="grid grid-cols-2 gap-2 py-2 border-y border-slate-50 dark:border-slate-750 text-xs">
-                    <div>
-                      <span className="text-slate-400">Score Obtained</span>
-                      <p className="font-bold text-slate-800 dark:text-white">{res.score} Marks</p>
-                    </div>
-                    <div>
-                      <span className="text-slate-400">Percentage</span>
-                      <p className="font-bold text-slate-800 dark:text-white">{res.percentage.toFixed(1)}%</p>
-                    </div>
+                  <div className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl text-xs text-slate-500 dark:text-slate-400 font-medium text-center">
+                    Evaluation results are processed confidentially by the administration board.
                   </div>
-
-                  {/* Certificate Download Action */}
-                  <button
-                    onClick={() => downloadResultPDF(res._id, res.exam ? res.exam.title : 'Assessment')}
-                    className="w-full py-2 bg-slate-100 dark:bg-slate-700 hover:bg-brand-50 hover:text-brand-700 dark:hover:bg-brand-950/20 dark:hover:text-brand-300 text-slate-700 dark:text-white font-semibold text-xs rounded-xl transition flex items-center justify-center space-x-2"
-                  >
-                    <FileText className="h-4 w-4" />
-                    <span>Download PDF Certificate</span>
-                  </button>
                 </div>
               ))}
             </div>
