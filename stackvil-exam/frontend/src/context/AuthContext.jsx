@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import { API_BASE_URL } from '../config/api';
 
 const AuthContext = createContext(null);
 
@@ -11,12 +12,7 @@ export const AuthProvider = ({ children }) => {
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light');
 
   // Base API configuration
-  axios.defaults.baseURL = import.meta.env.VITE_API_URL || window.location.origin;
-
-  // Bypass ngrok warning pages if ngrok tunnel is used
-  if (axios.defaults.baseURL.includes('ngrok')) {
-    axios.defaults.headers.common['ngrok-skip-browser-warning'] = 'true';
-  }
+  axios.defaults.baseURL = API_BASE_URL;
 
   useEffect(() => {
     // Configure default headers

@@ -10,6 +10,7 @@ import { Camera, CameraOff, Video } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { io } from 'socket.io-client';
 import { useAuth } from '../context/AuthContext';
+import { API_BASE_URL } from '../config/api';
 
 const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged }, ref) => {
   const { user } = useAuth();
@@ -223,7 +224,7 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
   // Initialize Socket connection
   useEffect(() => {
     if (permission === 'granted' && candidateId) {
-      const socket = io(import.meta.env.VITE_API_URL || window.location.origin, {
+      const socket = io(API_BASE_URL, {
         path: '/socket.io'
       });
       socketRef.current = socket;

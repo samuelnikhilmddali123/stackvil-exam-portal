@@ -9,6 +9,7 @@ import { Monitor, AlertOctagon, CheckCircle2, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { io } from 'socket.io-client';
 import { useAuth } from '../context/AuthContext';
+import { API_BASE_URL } from '../config/api';
 
 const ProctorScreenShare = forwardRef(({
   examId,
@@ -243,7 +244,7 @@ const ProctorScreenShare = forwardRef(({
 
   useEffect(() => {
     if (isSharing && candidateId) {
-      const socket = io(import.meta.env.VITE_API_URL || window.location.origin, {
+      const socket = io(API_BASE_URL, {
         path: '/socket.io'
       });
       socketRef.current = socket;

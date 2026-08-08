@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { API_BASE_URL } from '../../config/api';
 import { 
   Settings as SettingsIcon, 
   Upload, 
@@ -155,7 +156,7 @@ const Settings = () => {
             <div className="h-20 w-20 bg-slate-50 dark:bg-slate-900 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl flex items-center justify-center relative overflow-hidden shrink-0">
               {companyLogo ? (
                 <img 
-                  src={logoFile ? companyLogo : `${import.meta.env.VITE_API_URL || window.location.origin}${companyLogo}`} 
+                  src={logoFile ? companyLogo : `${API_BASE_URL}${companyLogo}`} 
                   alt="Company Logo" 
                   className="w-full h-full object-contain" 
                 />

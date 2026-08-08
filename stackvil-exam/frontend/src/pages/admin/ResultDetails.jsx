@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { API_BASE_URL } from '../../config/api';
 import { 
   ArrowLeft,
   CheckCircle,
@@ -438,7 +439,7 @@ const ResultDetails = () => {
                     {q.type === 'Image' && q.imageUrl && (
                       <div className="max-w-md w-full border border-slate-100 dark:border-slate-750 rounded-2xl overflow-hidden bg-slate-950 p-2">
                         <img 
-                          src={`${import.meta.env.VITE_API_URL || window.location.origin}${q.imageUrl}`} 
+                          src={`${API_BASE_URL}${q.imageUrl}`} 
                           alt="Question Context Visual" 
                           className="max-h-[220px] object-contain rounded-xl mx-auto"
                         />

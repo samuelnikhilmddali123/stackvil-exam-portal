@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+import { API_BASE_URL } from '../../config/api';
 import { 
   Radio, 
   Camera, 
@@ -129,7 +130,7 @@ const LiveProctor = () => {
 
   // Real-time WebSocket connection
   useEffect(() => {
-    const socket = io(import.meta.env.VITE_API_URL || window.location.origin, {
+    const socket = io(API_BASE_URL, {
       path: '/socket.io'
     });
     socketRef.current = socket;
@@ -362,7 +363,7 @@ const LiveProctor = () => {
                     />
                   ) : session.latestBase64Frame || session.latestImagePath ? (
                     <img
-                      src={session.latestBase64Frame || `${import.meta.env.VITE_API_URL || window.location.origin}${session.latestImagePath}`}
+                      src={session.latestBase64Frame || `${API_BASE_URL}${session.latestImagePath}`}
                       alt={`${session.candidateName}'s Feed`}
                       className="w-full h-full object-cover transform -scale-x-100"
                     />
@@ -553,7 +554,7 @@ const LiveProctor = () => {
                     />
                   ) : selectedCandidate.latestBase64Frame || selectedCandidate.latestImagePath ? (
                     <img
-                      src={selectedCandidate.latestBase64Frame || `${import.meta.env.VITE_API_URL || window.location.origin}${selectedCandidate.latestImagePath}`}
+                      src={selectedCandidate.latestBase64Frame || `${API_BASE_URL}${selectedCandidate.latestImagePath}`}
                       alt="Camera Feed"
                       className="w-full h-full object-cover transform -scale-x-100"
                     />

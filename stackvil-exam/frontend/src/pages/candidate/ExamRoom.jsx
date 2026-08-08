@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { API_BASE_URL } from '../../config/api';
 import { 
   AlertTriangle,
   Clock, 
@@ -811,7 +812,7 @@ const ExamRoom = () => {
               {currentQ?.type === 'Image' && currentQ.imageUrl && (
                 <div className="max-w-md w-full border border-slate-800 rounded-2xl overflow-hidden bg-slate-900 flex items-center justify-center p-2 mb-4">
                   <img 
-                    src={`${import.meta.env.VITE_API_URL || window.location.origin}${currentQ.imageUrl}`} 
+                    src={`${API_BASE_URL}${currentQ.imageUrl}`} 
                     alt="Question visual layout" 
                     className="max-h-[220px] object-contain rounded-xl" 
                   />

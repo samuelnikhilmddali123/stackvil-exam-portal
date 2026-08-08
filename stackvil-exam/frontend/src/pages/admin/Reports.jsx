@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { API_BASE_URL } from '../../config/api';
 import { 
   FileText, 
   FileDown, 
@@ -413,7 +414,7 @@ const Reports = () => {
                       <div className="w-full aspect-[4/3] bg-slate-950 rounded-xl overflow-hidden flex items-center justify-center relative">
                         {log.imagePath ? (
                           <img 
-                            src={`${import.meta.env.VITE_API_URL || window.location.origin}${log.imagePath}`} 
+                            src={`${API_BASE_URL}${log.imagePath}`} 
                             alt="Proctor Snapshot" 
                             className="w-full h-full object-cover transform -scale-x-100"
                             onError={(e) => {
