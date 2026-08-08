@@ -9,8 +9,8 @@ echo   Stackvil Online Examination Portal Launcher
 echo ===================================================
 echo.
 echo Please select an option to start:
-echo  [1] Start Everything (Backend, Frontend, and Cloudflare Tunnel)
-echo  [2] Start Cloudflare Tunnel Only
+echo  [1] Start Everything (Backend, Frontend, and Cloudflare Named Tunnel)
+echo  [2] Start Cloudflare Named Tunnel Only (https://api.stackvil.com)
 echo  [3] Start Development Servers Only (Backend and Frontend)
 echo  [4] Deploy to Vercel Production (https://entrance.stackvil.com)
 echo  [5] Exit
@@ -34,14 +34,14 @@ echo Starting Frontend Server...
 start "Stackvil Frontend" cmd /c "npm run frontend"
 timeout /t 2 >nul
 
-echo Starting Cloudflare Tunnel for Backend...
-start "Cloudflare Tunnel" cmd /c "npm run tunnel:backend"
+echo Starting Permanent Cloudflare Tunnel (https://api.stackvil.com)...
+start "Cloudflare Named Tunnel" cmd /c "npm run tunnel:backend"
 goto exit_launcher
 
 :start_tunnel
 echo.
-echo Starting Cloudflare Tunnel for Backend...
-start "Cloudflare Tunnel" cmd /c "npm run tunnel:backend"
+echo Starting Permanent Cloudflare Tunnel (https://api.stackvil.com)...
+start "Cloudflare Named Tunnel" cmd /c "npm run tunnel:backend"
 goto exit_launcher
 
 :start_servers

@@ -47,10 +47,8 @@ app.use(
       if (!origin) return callback(null, true);
       
       const isLocalhost = origin.includes('localhost') || origin.includes('127.0.0.1');
-      const isNgrok = origin.includes('ngrok-free.app') || origin.includes('ngrok.io');
-      const isCloudflare = origin.includes('trycloudflare.com');
       
-      if (allowedOrigins.indexOf(origin) !== -1 || isLocalhost || isNgrok || isCloudflare) {
+      if (allowedOrigins.indexOf(origin) !== -1 || isLocalhost) {
         return callback(null, true);
       }
       
@@ -102,7 +100,7 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin) || origin.includes('trycloudflare.com') || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+      if (!origin || allowedOrigins.includes(origin) || origin.includes('localhost') || origin.includes('127.0.0.1')) {
         return callback(null, true);
       }
       return callback(new Error(`Origin ${origin} not allowed by Socket.IO CORS`));
