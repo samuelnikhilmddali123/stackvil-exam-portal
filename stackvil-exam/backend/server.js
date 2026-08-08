@@ -33,6 +33,8 @@ app.use(
 // Enable CORS
 const allowedOrigins = [
   process.env.FRONTEND_URL,
+  'https://entrance.stackvil.com',
+  'https://stackvil-exam-portal.vercel.app',
   'http://localhost:5173',
   'http://localhost:5174',
   'http://localhost:3000',
@@ -44,12 +46,11 @@ app.use(
       // Allow requests with no origin (like mobile apps or curl requests)
       if (!origin) return callback(null, true);
       
-      const isDevelopment = process.env.NODE_ENV !== 'production';
       const isLocalhost = origin.includes('localhost') || origin.includes('127.0.0.1');
       const isNgrok = origin.includes('ngrok-free.app') || origin.includes('ngrok.io');
       const isCloudflare = origin.includes('trycloudflare.com');
       
-      if (allowedOrigins.indexOf(origin) !== -1 || (isDevelopment && (isLocalhost || isNgrok || isCloudflare))) {
+      if (allowedOrigins.indexOf(origin) !== -1 || isLocalhost || isNgrok || isCloudflare) {
         return callback(null, true);
       }
       
@@ -100,8 +101,14 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: '*',
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin) || origin.includes('trycloudflare.com') || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+        return callback(null, true);
+      }
+      return callback(new Error(`Origin ${origin} not allowed by Socket.IO CORS`));
+    },
     methods: ['GET', 'POST'],
+    credentials: true,
   },
 });
 

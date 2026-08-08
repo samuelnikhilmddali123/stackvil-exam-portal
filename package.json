@@ -11,6 +11,7 @@
     "backend": "cd stackvil-exam/backend && npm run dev",
     "frontend": "cd stackvil-exam/frontend && npm run dev",
     "tunnel": "where cloudflared >nul 2>nul && cloudflared tunnel --url http://localhost:5173 || \"C:\\Program Files (x86)\\cloudflared\\cloudflared.exe\" tunnel --url http://localhost:5173",
-    "tunnel:backend": "where cloudflared >nul 2>nul && cloudflared tunnel --url http://localhost:5000 || \"C:\\Program Files (x86)\\cloudflared\\cloudflared.exe\" tunnel --url http://localhost:5000"
+    "tunnel:backend": "node start-tunnel.js",
+    "tunnel:auto": "node start-tunnel.js"
   }
 }
