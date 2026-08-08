@@ -32,31 +32,35 @@ app.use(
 
 // Enable CORS
 const allowedOrigins = [
-  process.env.FRONTEND_URL,
   'https://entrance.stackvil.com',
   'https://stackvil-exam-portal.vercel.app',
   'http://localhost:5173',
   'http://localhost:5174',
   'http://localhost:3000',
+  process.env.FRONTEND_URL,
 ].filter(Boolean);
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps or curl requests)
-      if (!origin) return callback(null, true);
-      
-      const isLocalhost = origin.includes('localhost') || origin.includes('127.0.0.1');
-      
-      if (allowedOrigins.indexOf(origin) !== -1 || isLocalhost) {
-        return callback(null, true);
-      }
-      
-      return callback(new Error(`Origin ${origin} not allowed by CORS`));
-    },
-    credentials: true,
-  })
-);
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const isLocalhost = origin.includes('localhost') || origin.includes('127.0.0.1');
+    
+    if (allowedOrigins.indexOf(origin) !== -1 || isLocalhost) {
+      return callback(null, true);
+    }
+    
+    return callback(null, false);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  optionsSuccessStatus: 200,
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 // Body Parsers
 app.use(express.json({ limit: '15mb' })); // Support larger webcam frame payloads
