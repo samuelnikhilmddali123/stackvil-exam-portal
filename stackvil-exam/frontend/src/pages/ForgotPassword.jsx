@@ -65,7 +65,7 @@ const ForgotPassword = () => {
               </span>
               <input
                 type="email"
-                placeholder="you@company.com"
+                placeholder="you@example.com"
                 {...register('email', {
                   required: 'Email address is required',
                   pattern: {

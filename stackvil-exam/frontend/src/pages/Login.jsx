@@ -87,7 +87,7 @@ const Login = ({ isAdmin = false }) => {
                 </span>
                 <input
                   type="email"
-                  placeholder="you@company.com"
+                  placeholder="you@example.com"
                   autoComplete="off"
                   {...register('emailAddress', {
                     required: 'Email address is required',
@@ -172,19 +172,7 @@ const Login = ({ isAdmin = false }) => {
             </button>
           </form>
 
-          {/* Demo credentials hint */}
-          <div className="pt-4 border-t border-slate-100 dark:border-slate-700 text-center">
-            <p className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">
-              Demo Credentials
-            </p>
-            <div className="flex justify-center text-[10px] text-slate-500 dark:text-slate-400">
-              <div className="p-2 w-full bg-slate-50 dark:bg-slate-900 rounded-lg">
-                <p className="font-bold text-slate-700 dark:text-slate-200">Admin Account</p>
-                <p>hr@stackvil.com</p>
-                <p>password123</p>
-              </div>
-            </div>
-          </div>
+
 
         </div>
       </div>
@@ -282,7 +270,7 @@ const Login = ({ isAdmin = false }) => {
                   </span>
                   <input
                     type="email"
-                    placeholder="you@company.com"
+                    placeholder="you@example.com"
                     autoComplete="off"
                     {...register('emailAddress', {
                       required: 'Email address is required',
@@ -376,19 +364,7 @@ const Login = ({ isAdmin = false }) => {
 
             </form>
 
-            {/* Demo credentials hint */}
-            <div className="pt-4 border-t border-slate-100 dark:border-slate-700 text-center">
-              <p className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">
-                Demo Credentials
-              </p>
-              <div className="flex justify-center text-[10px] text-slate-500 dark:text-slate-400">
-                <div className="p-2 w-full bg-slate-50 dark:bg-slate-900 rounded-lg">
-                  <p className="font-bold text-slate-700 dark:text-slate-200">Candidate Account</p>
-                  <p>candidate@stackvil.com</p>
-                  <p>password123</p>
-                </div>
-              </div>
-            </div>
+
 
           </div>
         </div>

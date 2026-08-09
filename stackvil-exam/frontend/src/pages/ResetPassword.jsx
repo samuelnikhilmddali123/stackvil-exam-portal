@@ -73,7 +73,7 @@ const ResetPassword = () => {
             </label>
             <input
               type="email"
-              placeholder="email@company.com"
+              placeholder="email@example.com"
               {...register('email', { required: 'Confirming email is required' })}
               className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 rounded-2xl text-sm outline-none cursor-not-allowed"
               readOnly

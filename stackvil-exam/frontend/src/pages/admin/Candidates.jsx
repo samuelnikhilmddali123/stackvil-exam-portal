@@ -472,7 +472,7 @@ const Candidates = () => {
                   required
                   value={formEmail}
                   onChange={(e) => setFormEmail(e.target.value)}
-                  placeholder="name@company.com"
+                  placeholder="name@example.com"
                   autoComplete="off"
                   className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-500/50"
                 />
