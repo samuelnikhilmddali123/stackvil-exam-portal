@@ -342,6 +342,15 @@ const LiveProctor = () => {
             const cameraStream = candidateStreams[candidateIdStr]?.camera;
             const screenStream = candidateStreams[candidateIdStr]?.screen;
 
+            const isCameraStreamLive = Boolean(
+              cameraStream &&
+              cameraStream.getVideoTracks &&
+              cameraStream.getVideoTracks().length > 0 &&
+              cameraStream.getVideoTracks().some(t => t.readyState === 'live' && t.enabled)
+            );
+            const hasBase64Image = Boolean(session.latestBase64Frame && session.latestBase64Frame.length > 500);
+            const hasImagePath = Boolean(session.latestImagePath);
+
             return (
               <div 
                 key={`${session.candidateId}-${session.examId}`}
@@ -356,7 +365,7 @@ const LiveProctor = () => {
 
                 {/* Feed Display Frame */}
                 <div className="relative aspect-[4/3] bg-slate-950 flex items-center justify-center overflow-hidden">
-                  {cameraStream ? (
+                  {isCameraStreamLive ? (
                     <video
                       ref={(el) => {
                         if (el) {
@@ -369,15 +378,14 @@ const LiveProctor = () => {
                       muted
                       className="w-full h-full object-cover transform -scale-x-100"
                     />
-                  ) : (session.latestBase64Frame || session.latestImagePath) ? (
+                  ) : (hasBase64Image || hasImagePath) ? (
                     <img
                       src={
-                        session.latestBase64Frame ||
-                        (session.latestImagePath
-                          ? (session.latestImagePath.startsWith('http')
+                        hasBase64Image
+                          ? session.latestBase64Frame
+                          : (session.latestImagePath.startsWith('http')
                               ? session.latestImagePath
                               : `${API_BASE_URL}/${session.latestImagePath.replace(/^\//, '')}`)
-                          : '')
                       }
                       alt={`${session.candidateName}'s Feed`}
                       className="w-full h-full object-cover transform -scale-x-100"
@@ -491,6 +499,15 @@ const LiveProctor = () => {
         const cameraStream = candidateStreams[cIdStr]?.camera;
         const screenStream = candidateStreams[cIdStr]?.screen;
 
+        const isCameraStreamLive = Boolean(
+          cameraStream &&
+          cameraStream.getVideoTracks &&
+          cameraStream.getVideoTracks().length > 0 &&
+          cameraStream.getVideoTracks().some(t => t.readyState === 'live' && t.enabled)
+        );
+        const hasBase64Image = Boolean(selectedCandidate.latestBase64Frame && selectedCandidate.latestBase64Frame.length > 500);
+        const hasImagePath = Boolean(selectedCandidate.latestImagePath);
+
         return (
           <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex items-center justify-center p-4">
             <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-6xl w-full max-h-[92vh] overflow-hidden flex flex-col shadow-2xl">
@@ -564,7 +581,7 @@ const LiveProctor = () => {
 
                 {/* PICTURE-IN-PICTURE CAMERA OVERLAY (Top-Right Corner) */}
                 <div className="absolute top-4 right-4 w-64 aspect-[4/3] bg-slate-950 border-2 border-brand-500/70 rounded-2xl overflow-hidden shadow-2xl z-20 group">
-                  {cameraStream ? (
+                  {isCameraStreamLive ? (
                     <video
                       ref={(el) => {
                         if (el) {
@@ -577,15 +594,14 @@ const LiveProctor = () => {
                       muted
                       className="w-full h-full object-cover transform -scale-x-100"
                     />
-                  ) : (selectedCandidate.latestBase64Frame || selectedCandidate.latestImagePath) ? (
+                  ) : (hasBase64Image || hasImagePath) ? (
                     <img
                       src={
-                        selectedCandidate.latestBase64Frame ||
-                        (selectedCandidate.latestImagePath
-                          ? (selectedCandidate.latestImagePath.startsWith('http')
+                        hasBase64Image
+                          ? selectedCandidate.latestBase64Frame
+                          : (selectedCandidate.latestImagePath.startsWith('http')
                               ? selectedCandidate.latestImagePath
                               : `${API_BASE_URL}/${selectedCandidate.latestImagePath.replace(/^\//, '')}`)
-                          : '')
                       }
                       alt="Camera Feed"
                       className="w-full h-full object-cover transform -scale-x-100"

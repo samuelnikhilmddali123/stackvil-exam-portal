@@ -282,9 +282,14 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
       const canvas = canvasRef.current;
       const context = canvas.getContext('2d');
 
+      // Check if video track has actual loaded frame dimensions to avoid black frames
+      if (!video || !video.videoWidth || !video.videoHeight || video.readyState < 2) {
+        return null;
+      }
+
       // Draw current video frame to canvas
-      canvas.width = video.videoWidth || 320;
-      canvas.height = video.videoHeight || 240;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
       // Emit base64 image frame over socket for real-time live proctoring stream
