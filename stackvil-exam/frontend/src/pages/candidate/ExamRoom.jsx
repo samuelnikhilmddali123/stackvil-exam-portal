@@ -20,6 +20,7 @@ import { motion } from 'framer-motion';
 
 // Components
 import ProctorCamera from '../../components/ProctorCamera';
+import ProctorScreenShare from '../../components/ProctorScreenShare';
 import QuestionPalette from '../../components/QuestionPalette';
 import WarningModal from '../../components/WarningModal';
 import CodeEditor from '../../components/CodeEditor';
@@ -33,6 +34,7 @@ const ExamRoom = () => {
   const { logout } = useAuth();
 
   const proctorRef = useRef(null);
+  const screenShareRef = useRef(null);
   const startTimeRef = useRef(Date.now());
   const questionStartRef = useRef(Date.now());
 
@@ -1072,17 +1074,28 @@ const ExamRoom = () => {
         {/* Right Pane: Camera monitor and Question Palette */}
         <div className="w-80 shrink-0 bg-slate-900 border-l border-slate-800 flex flex-col p-6 space-y-6 hidden lg:flex">
           
-          {/* Proctoring camera feeds */}
-          <div className="space-y-2">
-            <h4 className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Webcam audit</h4>
-            <ProctorCamera
-              ref={proctorRef}
-              examId={examId}
-              onPermissionDenied={() => {
-                triggerViolation('Camera Permission Denied');
-              }}
-              onWarningLogged={handleWarningLogged}
-            />
+          {/* Proctoring camera & screen feeds */}
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <h4 className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Webcam Audit</h4>
+              <ProctorCamera
+                ref={proctorRef}
+                examId={examId}
+                onPermissionDenied={() => {
+                  triggerViolation('Camera Permission Denied');
+                }}
+                onWarningLogged={handleWarningLogged}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <h4 className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Screen Audit</h4>
+              <ProctorScreenShare
+                ref={screenShareRef}
+                examId={examId}
+                onWarningLogged={handleWarningLogged}
+              />
+            </div>
           </div>
 
           {/* Warnings Log indicator */}

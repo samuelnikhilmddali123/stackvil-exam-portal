@@ -194,10 +194,10 @@ const getLiveProctorSessions = async (req, res, next) => {
     for (const log of logs) {
       if (!log.candidate || !log.exam) continue;
 
-      // 2. Check if a corresponding Result exists and is fully submitted/completed
+      // 2. Check if a corresponding Result exists and is fully submitted/completed or disqualified
       const result = await Result.findOne({ candidate: log.candidate._id, exam: log.exam._id });
-      if (result && result.submittedAt && result.status !== 'Pending') {
-        continue; // Fully submitted/completed exam session, skip
+      if (result && (result.isDisqualified || (result.round3 && result.round3.completed) || (result.submittedAt && result.status !== 'Pending'))) {
+        continue; // Fully submitted/completed exam session or disqualified candidate, skip
       }
 
       // 3. Verify if candidate is active (within last 30 minutes)

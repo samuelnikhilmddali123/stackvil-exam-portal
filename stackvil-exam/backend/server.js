@@ -144,7 +144,7 @@ io.on('connection', (socket) => {
     }
 
     // Notify admins that candidate is online for WebRTC stream
-    socket.broadcast.to('admin-proctor-room').emit('candidate-online-webrtc', {
+    io.to('admin-proctor-room').emit('candidate-online-webrtc', {
       socketId: socket.id,
       candidateId,
       examId,
@@ -156,7 +156,7 @@ io.on('connection', (socket) => {
   socket.on('join-admin-proctor', () => {
     socket.join('admin-proctor-room');
     // Ping all online candidates to initiate targeted peer connection offer
-    socket.broadcast.emit('admin-online-ping', { adminSocketId: socket.id });
+    io.emit('admin-online-ping', { adminSocketId: socket.id });
   });
 
   // Relay WebRTC signals between candidate and admin (with streamType)

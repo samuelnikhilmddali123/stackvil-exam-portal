@@ -75,6 +75,20 @@ const startExam = async (req, res, next) => {
       await exam.save();
     }
 
+    // Auto-create/touch ProctorLog session record
+    const ProctorLog = require('../models/ProctorLog');
+    let pLog = await ProctorLog.findOne({ candidate: userId, exam: examId });
+    if (!pLog) {
+      await ProctorLog.create({
+        candidate: userId,
+        exam: examId,
+        logs: [{ type: 'Exam Started', timestamp: Date.now() }]
+      });
+    } else {
+      pLog.updatedAt = new Date();
+      await pLog.save();
+    }
+
     // Check if already submitted
     const existingResult = await Result.findOne({ candidate: userId, exam: examId });
     if (existingResult) {
