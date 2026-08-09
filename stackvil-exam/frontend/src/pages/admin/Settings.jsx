@@ -121,7 +121,7 @@ const Settings = () => {
         
         // Wait a brief moment for toast, then redirect
         setTimeout(() => {
-          window.location.href = '/login/admin';
+          window.location.href = '/login/saikiran';
         }, 1500);
       }
     } catch (err) {

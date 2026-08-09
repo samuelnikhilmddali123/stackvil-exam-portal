@@ -50,8 +50,8 @@ const ResetPassword = () => {
         
         {/* Header */}
         <div className="text-center space-y-3">
-          <div className="mx-auto h-12 w-12 bg-brand-500 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-brand-500/20">
-            <GraduationCap className="h-7 w-7" />
+          <div className="mx-auto h-16 w-16 bg-white dark:bg-slate-800 rounded-2xl flex items-center justify-center shadow-lg border border-slate-100 dark:border-slate-700 p-1.5 overflow-hidden">
+            <img src="/Black Simple Eagle Logo (1).jpg" alt="Company Logo" className="h-full w-full object-contain rounded-xl" />
           </div>
           <div>
             <h2 className="text-2xl font-extrabold text-slate-800 dark:text-white tracking-tight">

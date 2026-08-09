@@ -11,7 +11,7 @@ const CandidateLayout = () => {
       {/* Top Navigation */}
       <header className="h-16 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between px-6 md:px-12 sticky top-0 z-10">
         <Link to="/candidate/profile" className="flex items-center space-x-3">
-          <GraduationCap className="h-8 w-8 text-brand-600" />
+          <img src="/Black Simple Eagle Logo (1).jpg" alt="Company Logo" className="h-9 w-9 object-contain rounded-lg border border-slate-200 dark:border-slate-700 bg-white p-0.5" />
           <span className="font-extrabold text-xl tracking-tight text-slate-800 dark:text-white">Stackvil Portal</span>
         </Link>
 

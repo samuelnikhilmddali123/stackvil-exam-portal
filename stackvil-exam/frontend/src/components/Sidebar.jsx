@@ -26,7 +26,7 @@ const Sidebar = () => {
     <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col h-full shrink-0 border-r border-slate-800">
       {/* Brand Header */}
       <div className="h-16 flex items-center px-6 border-b border-slate-800 space-x-3">
-        <GraduationCap className="h-8 w-8 text-brand-400" />
+        <img src="/Black Simple Eagle Logo (1).jpg" alt="Company Logo" className="h-9 w-9 object-contain rounded-lg bg-white p-0.5" />
         <span className="font-extrabold text-xl tracking-tight text-white">Stackvil Exam</span>
       </div>
 

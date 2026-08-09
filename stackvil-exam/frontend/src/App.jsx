@@ -44,7 +44,7 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
 
   if (!token || !user) {
     const isAdminRoute = window.location.pathname.startsWith('/admin');
-    return <Navigate to={isAdminRoute ? "/login/admin" : "/login"} replace />;
+    return <Navigate to={isAdminRoute ? "/login/saikiran" : "/login"} replace />;
   }
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {
@@ -80,7 +80,7 @@ function App() {
         <Routes>
           {/* Public Auth Routes */}
           <Route path="/login" element={<PublicRoute><Login isAdmin={false} /></PublicRoute>} />
-          <Route path="/login/admin" element={<PublicRoute><Login isAdmin={true} /></PublicRoute>} />
+          <Route path="/login/saikiran" element={<PublicRoute><Login isAdmin={true} /></PublicRoute>} />
           <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
           <Route path="/reset-password" element={<PublicRoute><ResetPassword /></PublicRoute>} />
 

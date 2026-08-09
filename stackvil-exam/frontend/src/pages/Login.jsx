@@ -58,8 +58,8 @@ const Login = ({ isAdmin = false }) => {
           
           {/* Brand/Logo Header */}
           <div className="text-center space-y-3">
-            <div className="mx-auto h-12 w-12 bg-brand-500 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-brand-500/20">
-              <GraduationCap className="h-7 w-7" />
+            <div className="mx-auto h-16 w-16 bg-white dark:bg-slate-800 rounded-2xl flex items-center justify-center shadow-lg border border-slate-100 dark:border-slate-700 p-1.5 overflow-hidden">
+              <img src="/Black Simple Eagle Logo (1).jpg" alt="Company Logo" className="h-full w-full object-contain rounded-xl" />
             </div>
             <div>
               <h2 className="text-2xl font-extrabold text-slate-800 dark:text-white tracking-tight">
@@ -190,9 +190,9 @@ const Login = ({ isAdmin = false }) => {
             
             {/* Header info */}
             <div className="space-y-4">
-              <div className="inline-flex items-center space-x-3 bg-brand-500 text-white p-3 rounded-2xl shadow-lg shadow-brand-500/20">
-                <GraduationCap className="h-8 w-8" />
-                <span className="font-black tracking-wider text-xl uppercase">Stackvil</span>
+              <div className="inline-flex items-center space-x-3 bg-white dark:bg-slate-800 p-2 pr-4 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700">
+                <img src="/Black Simple Eagle Logo (1).jpg" alt="Company Logo" className="h-10 w-10 object-contain rounded-xl" />
+                <span className="font-black tracking-wider text-xl uppercase text-slate-800 dark:text-white">Stackvil</span>
               </div>
               <div>
                 <h1 className="text-2xl md:text-3xl font-extrabold text-slate-800 dark:text-white leading-tight">
