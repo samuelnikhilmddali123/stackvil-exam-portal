@@ -28,7 +28,6 @@ const CandidateCameraFeed = ({ candidateId, socketRef, cameraStream, initialImag
   const imgRef = useRef(null);
   const prevUrlRef = useRef(null);
   const [hasImage, setHasImage] = useState(Boolean(initialImage));
-  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
 
   useEffect(() => {
     if (initialImage && imgRef.current) {
@@ -40,121 +39,20 @@ const CandidateCameraFeed = ({ candidateId, socketRef, cameraStream, initialImag
   useEffect(() => {
     if (cameraStream && videoRef.current) {
       const video = videoRef.current;
-      video.srcObject = cameraStream;
-
-      const handlePlaying = () => setIsVideoPlaying(true);
-      video.addEventListener('playing', handlePlaying);
-
-      video.play().catch(() => {
-        video.muted = true;
-        video.play().catch(() => {});
-      });
-
-      return () => {
-        video.removeEventListener('playing', handlePlaying);
-      };
-    } else {
-      setIsVideoPlaying(false);
+      if (video.srcObject !== cameraStream) {
+        video.srcObject = cameraStream;
+        video.play().catch(err => {
+          console.warn('Video play error (retrying muted):', err);
+          video.muted = true;
+          video.play().catch(() => {});
+        });
+      }
     }
   }, [cameraStream]);
 
   useEffect(() => {
     const socket = socketRef?.current;
-    if (!socket || !candidateId) return;
-
-    let pc = null;
-    const startPeerConnection = async () => {
-      try {
-        pc = new RTCPeerConnection({
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:stun3.l.google.com:19302' },
-            { urls: 'stun:stun4.l.google.com:19302' },
-            { urls: 'stun:global.stun.twilio.com:3478' },
-            {
-              urls: 'turn:openrelay.metered.ca:80',
-              username: 'openrelayproject',
-              credential: 'openrelayproject'
-            },
-            {
-              urls: 'turn:openrelay.metered.ca:443',
-              username: 'openrelayproject',
-              credential: 'openrelayproject'
-            },
-            {
-              urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-              username: 'openrelayproject',
-              credential: 'openrelayproject'
-            }
-          ],
-          iceCandidatePoolSize: 10,
-          bundlePolicy: 'max-bundle'
-        });
-
-        pc.addTransceiver('video', { direction: 'recvonly' });
-
-        pc.ontrack = (event) => {
-          if (videoRef.current) {
-            const remoteStream = (event.streams && event.streams[0]) ? event.streams[0] : new MediaStream([event.track]);
-            videoRef.current.srcObject = remoteStream;
-            videoRef.current.play().then(() => setIsVideoPlaying(true)).catch(() => {
-              videoRef.current.muted = true;
-              videoRef.current.play().then(() => setIsVideoPlaying(true)).catch(() => {});
-            });
-          }
-        };
-
-        pc.onicecandidate = (event) => {
-          if (event.candidate && socket) {
-            socket.emit('webrtc-ice-candidate', {
-              candidateId,
-              candidate: event.candidate,
-              streamType: 'camera'
-            });
-          }
-        };
-
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-
-        socket.emit('webrtc-offer', {
-          candidateId,
-          offer,
-          streamType: 'camera'
-        });
-      } catch (err) {
-        console.warn('Error starting admin WebRTC offer:', err);
-      }
-    };
-
-    startPeerConnection();
-
-    const handleAnswer = async ({ senderSocketId, answer, streamType }) => {
-      if (streamType && streamType !== 'camera') return;
-      if (pc && answer) {
-        try {
-          await pc.setRemoteDescription(new RTCSessionDescription(answer));
-        } catch (e) {
-          console.warn('Error setting WebRTC answer:', e);
-        }
-      }
-    };
-
-    const handleIce = async ({ senderSocketId, candidate, streamType }) => {
-      if (streamType && streamType !== 'camera') return;
-      if (pc && candidate) {
-        try {
-          await pc.addIceCandidate(new RTCIceCandidate(candidate));
-        } catch (e) {
-          console.warn('Error adding ICE candidate on admin side:', e);
-        }
-      }
-    };
-
-    socket.on('webrtc-answer', handleAnswer);
-    socket.on('webrtc-ice-candidate', handleIce);
+    if (!socket) return;
 
     const handleFrameUpdate = ({ candidateId: frameCId, frameBuffer, imageData }) => {
       if (String(frameCId) !== String(candidateId)) return;
@@ -183,12 +81,7 @@ const CandidateCameraFeed = ({ candidateId, socketRef, cameraStream, initialImag
 
     socket.on('candidate-frame-update', handleFrameUpdate);
     return () => {
-      socket.off('webrtc-answer', handleAnswer);
-      socket.off('webrtc-ice-candidate', handleIce);
       socket.off('candidate-frame-update', handleFrameUpdate);
-      if (pc) {
-        pc.close();
-      }
       if (prevUrlRef.current && prevUrlRef.current.startsWith('blob:')) {
         URL.revokeObjectURL(prevUrlRef.current);
       }
@@ -197,21 +90,23 @@ const CandidateCameraFeed = ({ candidateId, socketRef, cameraStream, initialImag
 
   return (
     <>
+      {/* Background Image / Socket Blob Fallback */}
       <img
         ref={imgRef}
         alt={`${candidateName}'s Camera`}
-        className={`absolute inset-0 w-full h-full object-cover transform -scale-x-100 z-0 ${hasImage ? 'block' : 'hidden'}`}
+        className={`absolute inset-0 w-full h-full object-cover transform -scale-x-100 z-0 ${cameraStream ? 'hidden' : (hasImage ? 'block' : 'hidden')}`}
       />
 
+      {/* Real 30 FPS WebRTC Video Stream */}
       <video
         ref={videoRef}
         autoPlay
         playsInline
         muted
-        className={`absolute inset-0 w-full h-full object-cover transform -scale-x-100 transition-opacity duration-300 ${isVideoPlaying ? 'z-10 opacity-100' : 'z-0 opacity-0 pointer-events-none'}`}
+        className={`absolute inset-0 w-full h-full object-cover transform -scale-x-100 z-10 ${cameraStream ? 'block' : 'hidden'}`}
       />
 
-      {!hasImage && !isVideoPlaying && (
+      {!cameraStream && !hasImage && (
         <div className="text-center p-6 space-y-2 z-0">
           <Camera className="h-8 w-8 text-slate-600 mx-auto animate-pulse" />
           <p className="text-xs text-slate-500 font-semibold">Camera Stream Connecting...</p>
