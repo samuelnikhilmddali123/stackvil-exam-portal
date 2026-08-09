@@ -538,21 +538,6 @@ const LiveProctor = () => {
             const candidateIdStr = String(session.candidateId);
             const cameraStream = candidateStreams[candidateIdStr]?.camera;
             const screenStream = candidateStreams[candidateIdStr]?.screen;
-            const socketCameraFrame = socketFrames[candidateIdStr];
-            const socketScreenFrame = socketScreenFrames[candidateIdStr];
-
-            const hasBase64Image = Boolean(session.latestBase64Frame && session.latestBase64Frame.length > 500);
-            const hasImagePath = Boolean(session.latestImagePath);
-
-            const activeCameraImage = socketCameraFrame || (
-              hasBase64Image
-                ? session.latestBase64Frame
-                : (hasImagePath
-                    ? (session.latestImagePath.startsWith('http')
-                        ? session.latestImagePath
-                        : `${API_BASE_URL}/${session.latestImagePath.replace(/^\//, '')}`)
-                    : null)
-            );
 
             return (
               <div 
@@ -591,7 +576,7 @@ const LiveProctor = () => {
                   </div>
 
                   {/* Screen Share Badge if Active */}
-                  {(screenStream || socketScreenFrame) ? (
+                  {screenStream ? (
                     <div className="absolute bottom-10 left-3 bg-emerald-600/90 backdrop-blur-xs text-white px-2 py-0.5 rounded-full flex items-center space-x-1 shadow-md text-[9px] font-black">
                       <Monitor className="h-3 w-3" />
                       <span>Screen Shared</span>
@@ -685,21 +670,6 @@ const LiveProctor = () => {
         const cIdStr = String(selectedCandidate.candidateId);
         const cameraStream = candidateStreams[cIdStr]?.camera;
         const screenStream = candidateStreams[cIdStr]?.screen;
-        const socketCameraFrame = socketFrames[cIdStr];
-        const socketScreenFrame = socketScreenFrames[cIdStr];
-
-        const hasBase64Image = Boolean(selectedCandidate.latestBase64Frame && selectedCandidate.latestBase64Frame.length > 500);
-        const hasImagePath = Boolean(selectedCandidate.latestImagePath);
-
-        const activeCameraImage = socketCameraFrame || (
-          hasBase64Image
-            ? selectedCandidate.latestBase64Frame
-            : (hasImagePath
-                ? (selectedCandidate.latestImagePath.startsWith('http')
-                    ? selectedCandidate.latestImagePath
-                    : `${API_BASE_URL}/${selectedCandidate.latestImagePath.replace(/^\//, '')}`)
-                : null)
-        );
 
         return (
           <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex items-center justify-center p-4">
