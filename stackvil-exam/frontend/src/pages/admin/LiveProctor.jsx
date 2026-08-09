@@ -24,9 +24,11 @@ import LoadingSkeleton from '../../components/LoadingSkeleton';
 
 // High-performance direct DOM feed display for Candidate Camera (0 React re-render lag)
 const CandidateCameraFeed = ({ candidateId, socketRef, cameraStream, initialImage, candidateName }) => {
+  const videoRef = useRef(null);
   const imgRef = useRef(null);
   const prevUrlRef = useRef(null);
   const [hasImage, setHasImage] = useState(Boolean(initialImage));
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
 
   useEffect(() => {
     if (initialImage && imgRef.current) {
@@ -34,6 +36,27 @@ const CandidateCameraFeed = ({ candidateId, socketRef, cameraStream, initialImag
       setHasImage(true);
     }
   }, [initialImage]);
+
+  useEffect(() => {
+    if (cameraStream && videoRef.current) {
+      const video = videoRef.current;
+      video.srcObject = cameraStream;
+
+      const handlePlaying = () => setIsVideoPlaying(true);
+      video.addEventListener('playing', handlePlaying);
+
+      video.play().catch(() => {
+        video.muted = true;
+        video.play().catch(() => {});
+      });
+
+      return () => {
+        video.removeEventListener('playing', handlePlaying);
+      };
+    } else {
+      setIsVideoPlaying(false);
+    }
+  }, [cameraStream]);
 
   useEffect(() => {
     const socket = socketRef?.current;
@@ -80,26 +103,20 @@ const CandidateCameraFeed = ({ candidateId, socketRef, cameraStream, initialImag
         alt={`${candidateName}'s Camera`}
         className={`absolute inset-0 w-full h-full object-cover transform -scale-x-100 z-0 ${hasImage ? 'block' : 'hidden'}`}
       />
-      {!hasImage && !cameraStream && (
+
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
+        className={`absolute inset-0 w-full h-full object-cover transform -scale-x-100 transition-opacity duration-300 ${isVideoPlaying ? 'z-10 opacity-100' : 'z-0 opacity-0 pointer-events-none'}`}
+      />
+
+      {!hasImage && !isVideoPlaying && (
         <div className="text-center p-6 space-y-2 z-0">
           <Camera className="h-8 w-8 text-slate-600 mx-auto animate-pulse" />
           <p className="text-xs text-slate-500 font-semibold">Camera Stream Connecting...</p>
         </div>
-      )}
-
-      {cameraStream && (
-        <video
-          ref={(el) => {
-            if (el) {
-              if (el.srcObject !== cameraStream) el.srcObject = cameraStream;
-              el.play().catch(() => {});
-            }
-          }}
-          autoPlay
-          playsInline
-          muted
-          className="absolute inset-0 w-full h-full object-cover transform -scale-x-100 z-10"
-        />
       )}
     </>
   );
@@ -228,7 +245,25 @@ const LiveProctor = () => {
           iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' }
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' },
+            { urls: 'stun:global.stun.twilio.com:3478' },
+            {
+              urls: 'turn:openrelay.metered.ca:80',
+              username: 'openrelayproject',
+              credential: 'openrelayproject'
+            },
+            {
+              urls: 'turn:openrelay.metered.ca:443',
+              username: 'openrelayproject',
+              credential: 'openrelayproject'
+            },
+            {
+              urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+              username: 'openrelayproject',
+              credential: 'openrelayproject'
+            }
           ],
           iceCandidatePoolSize: 10,
           bundlePolicy: 'max-bundle'
@@ -237,8 +272,15 @@ const LiveProctor = () => {
         pcsRef.current[pcKey] = pc;
         iceQueuesRef.current[pcKey] = [];
 
+        pc.oniceconnectionstatechange = () => {
+          if (pc.iceConnectionState === 'failed') {
+            console.warn(`[WebRTC] Admin ${streamType} ICE connection failed, restarting ICE...`);
+            pc.restartIce();
+          }
+        };
+
         pc.ontrack = (event) => {
-          const remoteStream = event.streams[0];
+          const remoteStream = (event.streams && event.streams[0]) ? event.streams[0] : new MediaStream([event.track]);
           setCandidateStreams(prev => ({
             ...prev,
             [cIdStr]: {

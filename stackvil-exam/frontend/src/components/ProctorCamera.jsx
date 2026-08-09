@@ -179,7 +179,25 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
           { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun2.l.google.com:19302' }
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:stun3.l.google.com:19302' },
+          { urls: 'stun:stun4.l.google.com:19302' },
+          { urls: 'stun:global.stun.twilio.com:3478' },
+          {
+            urls: 'turn:openrelay.metered.ca:80',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+          },
+          {
+            urls: 'turn:openrelay.metered.ca:443',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+          },
+          {
+            urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+          }
         ],
         iceCandidatePoolSize: 10,
         bundlePolicy: 'max-bundle'
@@ -188,7 +206,14 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
       peersRef.current[adminSocketId] = pc;
       iceQueuesRef.current[adminSocketId] = [];
 
-      // Add local video track with adaptive bitrate parameters
+      pc.oniceconnectionstatechange = () => {
+        if (pc.iceConnectionState === 'failed') {
+          console.warn('WebRTC Camera ICE connection failed, attempting ICE restart...');
+          pc.restartIce();
+        }
+      };
+
+      // Add local video track with high performance 30 FPS video parameters
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => {
           const sender = pc.addTrack(track, streamRef.current);
@@ -196,8 +221,8 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
             try {
               const params = sender.getParameters();
               if (!params.encodings) params.encodings = [{}];
-              params.encodings[0].maxBitrate = 400000; // 400 kbps adaptive bitrate
-              params.encodings[0].maxFramerate = 20;
+              params.encodings[0].maxBitrate = 800000; // 800 kbps HD video
+              params.encodings[0].maxFramerate = 30; // 30 FPS video call
               sender.setParameters(params).catch(e => console.warn('Bitrate param set error:', e));
             } catch (e) {
               console.warn('Bitrate error:', e);
