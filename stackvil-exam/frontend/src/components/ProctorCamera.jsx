@@ -115,7 +115,7 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
     setStream(null);
   };
 
-  // Periodic capture for audit log every 30 seconds (not high-frequency base64 spam)
+  // Periodic capture for audit log and real-time live stream feed (every 3 seconds)
   useEffect(() => {
     if (permission !== 'granted' || !stream) return;
 
@@ -123,7 +123,7 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
 
     const interval = setInterval(() => {
       captureFrame('PeriodicCapture');
-    }, 30000);
+    }, 3000);
 
     return () => clearInterval(interval);
   }, [permission, stream]);

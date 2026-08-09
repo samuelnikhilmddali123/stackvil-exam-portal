@@ -358,15 +358,27 @@ const LiveProctor = () => {
                 <div className="relative aspect-[4/3] bg-slate-950 flex items-center justify-center overflow-hidden">
                   {cameraStream ? (
                     <video
-                      ref={(el) => { if (el && el.srcObject !== cameraStream) el.srcObject = cameraStream; }}
+                      ref={(el) => {
+                        if (el) {
+                          if (el.srcObject !== cameraStream) el.srcObject = cameraStream;
+                          el.play().catch(() => {});
+                        }
+                      }}
                       autoPlay
                       playsInline
                       muted
                       className="w-full h-full object-cover transform -scale-x-100"
                     />
-                  ) : session.latestBase64Frame || session.latestImagePath ? (
+                  ) : (session.latestBase64Frame || session.latestImagePath) ? (
                     <img
-                      src={session.latestBase64Frame || `${API_BASE_URL}${session.latestImagePath}`}
+                      src={
+                        session.latestBase64Frame ||
+                        (session.latestImagePath
+                          ? (session.latestImagePath.startsWith('http')
+                              ? session.latestImagePath
+                              : `${API_BASE_URL}/${session.latestImagePath.replace(/^\//, '')}`)
+                          : '')
+                      }
                       alt={`${session.candidateName}'s Feed`}
                       className="w-full h-full object-cover transform -scale-x-100"
                     />
@@ -529,7 +541,12 @@ const LiveProctor = () => {
               <div className="flex-1 bg-black relative flex items-center justify-center min-h-0 overflow-hidden">
                 {screenStream ? (
                   <video
-                    ref={(el) => { if (el && el.srcObject !== screenStream) el.srcObject = screenStream; }}
+                    ref={(el) => {
+                      if (el) {
+                        if (el.srcObject !== screenStream) el.srcObject = screenStream;
+                        el.play().catch(() => {});
+                      }
+                    }}
                     autoPlay
                     playsInline
                     muted
@@ -549,15 +566,27 @@ const LiveProctor = () => {
                 <div className="absolute top-4 right-4 w-64 aspect-[4/3] bg-slate-950 border-2 border-brand-500/70 rounded-2xl overflow-hidden shadow-2xl z-20 group">
                   {cameraStream ? (
                     <video
-                      ref={(el) => { if (el && el.srcObject !== cameraStream) el.srcObject = cameraStream; }}
+                      ref={(el) => {
+                        if (el) {
+                          if (el.srcObject !== cameraStream) el.srcObject = cameraStream;
+                          el.play().catch(() => {});
+                        }
+                      }}
                       autoPlay
                       playsInline
                       muted
                       className="w-full h-full object-cover transform -scale-x-100"
                     />
-                  ) : selectedCandidate.latestBase64Frame || selectedCandidate.latestImagePath ? (
+                  ) : (selectedCandidate.latestBase64Frame || selectedCandidate.latestImagePath) ? (
                     <img
-                      src={selectedCandidate.latestBase64Frame || `${API_BASE_URL}${selectedCandidate.latestImagePath}`}
+                      src={
+                        selectedCandidate.latestBase64Frame ||
+                        (selectedCandidate.latestImagePath
+                          ? (selectedCandidate.latestImagePath.startsWith('http')
+                              ? selectedCandidate.latestImagePath
+                              : `${API_BASE_URL}/${selectedCandidate.latestImagePath.replace(/^\//, '')}`)
+                          : '')
+                      }
                       alt="Camera Feed"
                       className="w-full h-full object-cover transform -scale-x-100"
                     />
