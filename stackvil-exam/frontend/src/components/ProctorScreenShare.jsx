@@ -278,6 +278,36 @@ const ProctorScreenShare = forwardRef(({
     }
   }, [isSharing, examId, candidateId]);
 
+  // Real-time socket screen frame fallback streaming (1 FPS)
+  useEffect(() => {
+    if (!isSharing || !stream) return;
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 960;
+    canvas.height = 540;
+
+    const screenFrameInterval = setInterval(() => {
+      if (!videoRef.current || !socketRef.current || !socketRef.current.connected) return;
+      const video = videoRef.current;
+      if (!video || !video.videoWidth || !video.videoHeight || video.readyState < 2) return;
+
+      try {
+        ctx.drawImage(video, 0, 0, 960, 540);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.40);
+        socketRef.current.emit('candidate-screen-frame', {
+          examId,
+          candidateId,
+          imageData: dataUrl
+        });
+      } catch (e) {
+        console.warn('Socket screen frame emit error:', e);
+      }
+    }, 1000);
+
+    return () => clearInterval(screenFrameInterval);
+  }, [isSharing, stream, examId, candidateId]);
+
   useImperativeHandle(ref, () => ({
     startScreenShare,
     stopScreenShare,

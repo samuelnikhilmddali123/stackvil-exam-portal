@@ -33,6 +33,8 @@ const LiveProctor = () => {
 
   // Streams map: { [candidateIdStr]: { camera: Stream, screen: Stream } }
   const [candidateStreams, setCandidateStreams] = useState({});
+  const [socketFrames, setSocketFrames] = useState({});
+  const [socketScreenFrames, setSocketScreenFrames] = useState({});
   const pcsRef = useRef({});
   const iceQueuesRef = useRef({});
   const socketRef = useRef(null);
@@ -149,6 +151,24 @@ const LiveProctor = () => {
       handleAdminWebRTCSignal(fromSocketId, signalData, candidateId, examId, streamType || 'camera');
     });
 
+    socket.on('candidate-frame-update', ({ candidateId, examId, imageData }) => {
+      if (!candidateId || !imageData) return;
+      const cIdStr = String(candidateId);
+      setSocketFrames(prev => ({
+        ...prev,
+        [cIdStr]: imageData
+      }));
+    });
+
+    socket.on('candidate-screen-frame-update', ({ candidateId, examId, imageData }) => {
+      if (!candidateId || !imageData) return;
+      const cIdStr = String(candidateId);
+      setSocketScreenFrames(prev => ({
+        ...prev,
+        [cIdStr]: imageData
+      }));
+    });
+
     socket.on('candidate-warning-update', ({ candidateId, examId, warningsCount, lastActivityType, lastActivityTime }) => {
       setSessions(prevSessions => {
         let found = false;
@@ -197,6 +217,18 @@ const LiveProctor = () => {
       });
 
       setCandidateStreams(prev => {
+        const next = { ...prev };
+        delete next[cIdStr];
+        return next;
+      });
+
+      setSocketFrames(prev => {
+        const next = { ...prev };
+        delete next[cIdStr];
+        return next;
+      });
+
+      setSocketScreenFrames(prev => {
         const next = { ...prev };
         delete next[cIdStr];
         return next;
@@ -341,15 +373,21 @@ const LiveProctor = () => {
             const candidateIdStr = String(session.candidateId);
             const cameraStream = candidateStreams[candidateIdStr]?.camera;
             const screenStream = candidateStreams[candidateIdStr]?.screen;
+            const socketCameraFrame = socketFrames[candidateIdStr];
+            const socketScreenFrame = socketScreenFrames[candidateIdStr];
 
-            const isCameraStreamLive = Boolean(
-              cameraStream &&
-              cameraStream.getVideoTracks &&
-              cameraStream.getVideoTracks().length > 0 &&
-              cameraStream.getVideoTracks().some(t => t.readyState === 'live' && t.enabled)
-            );
             const hasBase64Image = Boolean(session.latestBase64Frame && session.latestBase64Frame.length > 500);
             const hasImagePath = Boolean(session.latestImagePath);
+
+            const activeCameraImage = socketCameraFrame || (
+              hasBase64Image
+                ? session.latestBase64Frame
+                : (hasImagePath
+                    ? (session.latestImagePath.startsWith('http')
+                        ? session.latestImagePath
+                        : `${API_BASE_URL}/${session.latestImagePath.replace(/^\//, '')}`)
+                    : null)
+            );
 
             return (
               <div 
@@ -365,16 +403,10 @@ const LiveProctor = () => {
 
                 {/* Feed Display Frame */}
                 <div className="relative aspect-[4/3] bg-slate-950 flex items-center justify-center overflow-hidden">
-                  {/* Layer 1: Image Snapshot (Always rendered if image is available) */}
-                  {(hasBase64Image || hasImagePath) ? (
+                  {/* Layer 1: Image Snapshot / Real-Time Socket Stream */}
+                  {activeCameraImage ? (
                     <img
-                      src={
-                        hasBase64Image
-                          ? session.latestBase64Frame
-                          : (session.latestImagePath.startsWith('http')
-                              ? session.latestImagePath
-                              : `${API_BASE_URL}/${session.latestImagePath.replace(/^\//, '')}`)
-                      }
+                      src={activeCameraImage}
                       alt={`${session.candidateName}'s Feed`}
                       className="absolute inset-0 w-full h-full object-cover transform -scale-x-100 z-0"
                     />
@@ -408,7 +440,7 @@ const LiveProctor = () => {
                   </div>
 
                   {/* Screen Share Badge if Active */}
-                  {screenStream ? (
+                  {(screenStream || socketScreenFrame) ? (
                     <div className="absolute bottom-10 left-3 bg-emerald-600/90 backdrop-blur-xs text-white px-2 py-0.5 rounded-full flex items-center space-x-1 shadow-md text-[9px] font-black">
                       <Monitor className="h-3 w-3" />
                       <span>Screen Shared</span>
@@ -502,15 +534,21 @@ const LiveProctor = () => {
         const cIdStr = String(selectedCandidate.candidateId);
         const cameraStream = candidateStreams[cIdStr]?.camera;
         const screenStream = candidateStreams[cIdStr]?.screen;
+        const socketCameraFrame = socketFrames[cIdStr];
+        const socketScreenFrame = socketScreenFrames[cIdStr];
 
-        const isCameraStreamLive = Boolean(
-          cameraStream &&
-          cameraStream.getVideoTracks &&
-          cameraStream.getVideoTracks().length > 0 &&
-          cameraStream.getVideoTracks().some(t => t.readyState === 'live' && t.enabled)
-        );
         const hasBase64Image = Boolean(selectedCandidate.latestBase64Frame && selectedCandidate.latestBase64Frame.length > 500);
         const hasImagePath = Boolean(selectedCandidate.latestImagePath);
+
+        const activeCameraImage = socketCameraFrame || (
+          hasBase64Image
+            ? selectedCandidate.latestBase64Frame
+            : (hasImagePath
+                ? (selectedCandidate.latestImagePath.startsWith('http')
+                    ? selectedCandidate.latestImagePath
+                    : `${API_BASE_URL}/${selectedCandidate.latestImagePath.replace(/^\//, '')}`)
+                : null)
+        );
 
         return (
           <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex items-center justify-center p-4">
@@ -573,6 +611,12 @@ const LiveProctor = () => {
                     muted
                     className="w-full h-full object-contain"
                   />
+                ) : socketScreenFrame ? (
+                  <img
+                    src={socketScreenFrame}
+                    alt={`${selectedCandidate.candidateName}'s Screen Share`}
+                    className="w-full h-full object-contain"
+                  />
                 ) : (
                   <div className="text-center p-12 space-y-3">
                     <Monitor className="h-16 w-16 text-slate-700 mx-auto animate-pulse" />
@@ -585,15 +629,9 @@ const LiveProctor = () => {
 
                 {/* PICTURE-IN-PICTURE CAMERA OVERLAY (Top-Right Corner) */}
                 <div className="absolute top-4 right-4 w-64 aspect-[4/3] bg-slate-950 border-2 border-brand-500/70 rounded-2xl overflow-hidden shadow-2xl z-20 group">
-                  {(hasBase64Image || hasImagePath) ? (
+                  {activeCameraImage ? (
                     <img
-                      src={
-                        hasBase64Image
-                          ? selectedCandidate.latestBase64Frame
-                          : (selectedCandidate.latestImagePath.startsWith('http')
-                              ? selectedCandidate.latestImagePath
-                              : `${API_BASE_URL}/${selectedCandidate.latestImagePath.replace(/^\//, '')}`)
-                      }
+                      src={activeCameraImage}
                       alt="Camera Feed"
                       className="absolute inset-0 w-full h-full object-cover transform -scale-x-100 z-0"
                     />

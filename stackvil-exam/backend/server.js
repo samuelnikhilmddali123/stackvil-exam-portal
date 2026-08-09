@@ -204,6 +204,15 @@ io.on('connection', (socket) => {
     });
   });
 
+  // Candidate streams real-time fallback screen frame if needed
+  socket.on('candidate-screen-frame', ({ examId, candidateId, imageData }) => {
+    io.to('admin-proctor-room').emit('candidate-screen-frame-update', {
+      candidateId,
+      examId,
+      imageData,
+    });
+  });
+
   socket.on('disconnect', () => {
     if (socket.candidateId && socket.examId) {
       io.to('admin-proctor-room').emit('candidate-offline', {

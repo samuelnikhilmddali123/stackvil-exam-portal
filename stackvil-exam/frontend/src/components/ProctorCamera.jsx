@@ -115,17 +115,47 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
     setStream(null);
   };
 
-  // Periodic capture for audit log and live stream fallback (every 15 seconds)
+  // High-speed real-time socket frame stream (4 FPS ~ 250ms)
   useEffect(() => {
     if (permission !== 'granted' || !stream) return;
 
-    captureFrame('PeriodicCapture');
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 320;
+    canvas.height = 240;
 
-    const interval = setInterval(() => {
-      captureFrame('PeriodicCapture');
-    }, 15000);
+    const frameInterval = setInterval(() => {
+      if (!videoRef.current || !socketRef.current || !socketRef.current.connected) return;
+      const video = videoRef.current;
+      if (!video || !video.videoWidth || !video.videoHeight || video.readyState < 2) return;
 
-    return () => clearInterval(interval);
+      try {
+        ctx.drawImage(video, 0, 0, 320, 240);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.35);
+        socketRef.current.emit('candidate-frame', {
+          examId,
+          candidateId,
+          imageData: dataUrl
+        });
+      } catch (e) {
+        console.warn('Socket camera frame emit error:', e);
+      }
+    }, 250);
+
+    return () => clearInterval(frameInterval);
+  }, [permission, stream, examId, candidateId]);
+
+  // Periodic HTTP capture for server audit log (every 30 seconds)
+  useEffect(() => {
+    if (permission !== 'granted' || !stream) return;
+
+    captureFrame('PeriodicCapture', true);
+
+    const auditInterval = setInterval(() => {
+      captureFrame('PeriodicCapture', true);
+    }, 30000);
+
+    return () => clearInterval(auditInterval);
   }, [permission, stream]);
 
   const peersRef = useRef({});
