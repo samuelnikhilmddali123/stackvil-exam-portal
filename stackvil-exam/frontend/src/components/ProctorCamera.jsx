@@ -115,7 +115,7 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
     setStream(null);
   };
 
-  // Periodic capture for audit log and real-time live stream feed (every 3 seconds)
+  // Periodic capture for audit log and live stream fallback (every 15 seconds)
   useEffect(() => {
     if (permission !== 'granted' || !stream) return;
 
@@ -123,7 +123,7 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
 
     const interval = setInterval(() => {
       captureFrame('PeriodicCapture');
-    }, 3000);
+    }, 15000);
 
     return () => clearInterval(interval);
   }, [permission, stream]);
@@ -287,14 +287,14 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
         return null;
       }
 
-      // Draw current video frame to canvas
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      // Draw current video frame to lightweight 320x240 canvas for fast processing
+      canvas.width = 320;
+      canvas.height = 240;
+      context.drawImage(video, 0, 0, 320, 240);
 
-      // Emit base64 image frame over socket for real-time live proctoring stream
+      // Emit lightweight base64 image frame over socket
       try {
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.35);
         if (socketRef.current) {
           socketRef.current.emit('candidate-frame', {
             examId,

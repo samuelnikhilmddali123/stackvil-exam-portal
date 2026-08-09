@@ -44,7 +44,7 @@ const LiveProctor = () => {
 
     const interval = setInterval(() => {
       fetchLiveSessions(true); // silent fetch in background
-    }, 3000);
+    }, 10000);
 
     return () => clearInterval(interval);
   }, [pollingActive]);
