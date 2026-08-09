@@ -115,7 +115,7 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
     setStream(null);
   };
 
-  // High-speed real-time socket frame stream (4 FPS ~ 250ms)
+  // High-speed real-time socket frame stream (10 FPS ~ 100ms) using binary Blobs
   useEffect(() => {
     if (permission !== 'granted' || !stream) return;
 
@@ -124,23 +124,31 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
     canvas.width = 320;
     canvas.height = 240;
 
+    let isSending = false;
+
     const frameInterval = setInterval(() => {
-      if (!videoRef.current || !socketRef.current || !socketRef.current.connected) return;
+      if (isSending || !videoRef.current || !socketRef.current || !socketRef.current.connected) return;
       const video = videoRef.current;
       if (!video || !video.videoWidth || !video.videoHeight || video.readyState < 2) return;
 
+      isSending = true;
       try {
         ctx.drawImage(video, 0, 0, 320, 240);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.35);
-        socketRef.current.emit('candidate-frame', {
-          examId,
-          candidateId,
-          imageData: dataUrl
-        });
+        canvas.toBlob((blob) => {
+          isSending = false;
+          if (blob && socketRef.current && socketRef.current.connected) {
+            socketRef.current.emit('candidate-frame', {
+              examId,
+              candidateId,
+              frameBuffer: blob
+            });
+          }
+        }, 'image/jpeg', 0.30);
       } catch (e) {
+        isSending = false;
         console.warn('Socket camera frame emit error:', e);
       }
-    }, 250);
+    }, 100);
 
     return () => clearInterval(frameInterval);
   }, [permission, stream, examId, candidateId]);
@@ -170,8 +178,11 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
       const pc = new RTCPeerConnection({
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' }
-        ]
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' }
+        ],
+        iceCandidatePoolSize: 10,
+        bundlePolicy: 'max-bundle'
       });
 
       peersRef.current[adminSocketId] = pc;

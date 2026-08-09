@@ -196,20 +196,20 @@ io.on('connection', (socket) => {
   });
 
   // Candidate streams real-time fallback image frame if needed
-  socket.on('candidate-frame', ({ examId, candidateId, imageData }) => {
+  socket.on('candidate-frame', ({ examId, candidateId, frameBuffer, imageData }) => {
     io.to('admin-proctor-room').emit('candidate-frame-update', {
       candidateId,
       examId,
-      imageData,
+      frameBuffer: frameBuffer || imageData,
     });
   });
 
   // Candidate streams real-time fallback screen frame if needed
-  socket.on('candidate-screen-frame', ({ examId, candidateId, imageData }) => {
+  socket.on('candidate-screen-frame', ({ examId, candidateId, frameBuffer, imageData }) => {
     io.to('admin-proctor-room').emit('candidate-screen-frame-update', {
       candidateId,
       examId,
-      imageData,
+      frameBuffer: frameBuffer || imageData,
     });
   });
 

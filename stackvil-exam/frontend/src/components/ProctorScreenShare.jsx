@@ -163,8 +163,11 @@ const ProctorScreenShare = forwardRef(({
       const pc = new RTCPeerConnection({
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' }
-        ]
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' }
+        ],
+        iceCandidatePoolSize: 10,
+        bundlePolicy: 'max-bundle'
       });
 
       peersRef.current[adminSocketId] = pc;
@@ -278,7 +281,7 @@ const ProctorScreenShare = forwardRef(({
     }
   }, [isSharing, examId, candidateId]);
 
-  // Real-time socket screen frame fallback streaming (1 FPS)
+  // Real-time socket screen frame fallback streaming (2 FPS ~ 500ms)
   useEffect(() => {
     if (!isSharing || !stream) return;
 
@@ -287,23 +290,31 @@ const ProctorScreenShare = forwardRef(({
     canvas.width = 960;
     canvas.height = 540;
 
+    let isSending = false;
+
     const screenFrameInterval = setInterval(() => {
-      if (!videoRef.current || !socketRef.current || !socketRef.current.connected) return;
+      if (isSending || !videoRef.current || !socketRef.current || !socketRef.current.connected) return;
       const video = videoRef.current;
       if (!video || !video.videoWidth || !video.videoHeight || video.readyState < 2) return;
 
+      isSending = true;
       try {
         ctx.drawImage(video, 0, 0, 960, 540);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.40);
-        socketRef.current.emit('candidate-screen-frame', {
-          examId,
-          candidateId,
-          imageData: dataUrl
-        });
+        canvas.toBlob((blob) => {
+          isSending = false;
+          if (blob && socketRef.current && socketRef.current.connected) {
+            socketRef.current.emit('candidate-screen-frame', {
+              examId,
+              candidateId,
+              frameBuffer: blob
+            });
+          }
+        }, 'image/jpeg', 0.35);
       } catch (e) {
+        isSending = false;
         console.warn('Socket screen frame emit error:', e);
       }
-    }, 1000);
+    }, 500);
 
     return () => clearInterval(screenFrameInterval);
   }, [isSharing, stream, examId, candidateId]);

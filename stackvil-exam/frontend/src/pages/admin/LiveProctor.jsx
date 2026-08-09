@@ -22,6 +22,170 @@ import toast from 'react-hot-toast';
 import { io } from 'socket.io-client';
 import LoadingSkeleton from '../../components/LoadingSkeleton';
 
+// High-performance direct DOM feed display for Candidate Camera (0 React re-render lag)
+const CandidateCameraFeed = ({ candidateId, socketRef, cameraStream, initialImage, candidateName }) => {
+  const imgRef = useRef(null);
+  const prevUrlRef = useRef(null);
+  const [hasImage, setHasImage] = useState(Boolean(initialImage));
+
+  useEffect(() => {
+    if (initialImage && imgRef.current) {
+      imgRef.current.src = initialImage;
+      setHasImage(true);
+    }
+  }, [initialImage]);
+
+  useEffect(() => {
+    const socket = socketRef?.current;
+    if (!socket) return;
+
+    const handleFrameUpdate = ({ candidateId: frameCId, frameBuffer, imageData }) => {
+      if (String(frameCId) !== String(candidateId)) return;
+      if (!imgRef.current) return;
+
+      const buffer = frameBuffer || imageData;
+      let newUrl = null;
+      if (buffer instanceof ArrayBuffer || buffer instanceof Blob || ArrayBuffer.isView(buffer)) {
+        const blob = buffer instanceof Blob ? buffer : new Blob([buffer], { type: 'image/jpeg' });
+        newUrl = URL.createObjectURL(blob);
+      } else if (typeof buffer === 'string') {
+        newUrl = buffer;
+      }
+
+      if (newUrl) {
+        const oldUrl = prevUrlRef.current;
+        imgRef.current.src = newUrl;
+        prevUrlRef.current = newUrl;
+        setHasImage(true);
+
+        if (oldUrl && oldUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(oldUrl);
+        }
+      }
+    };
+
+    socket.on('candidate-frame-update', handleFrameUpdate);
+    return () => {
+      socket.off('candidate-frame-update', handleFrameUpdate);
+      if (prevUrlRef.current && prevUrlRef.current.startsWith('blob:')) {
+        URL.revokeObjectURL(prevUrlRef.current);
+      }
+    };
+  }, [socketRef, candidateId]);
+
+  return (
+    <>
+      <img
+        ref={imgRef}
+        alt={`${candidateName}'s Camera`}
+        className={`absolute inset-0 w-full h-full object-cover transform -scale-x-100 z-0 ${hasImage ? 'block' : 'hidden'}`}
+      />
+      {!hasImage && !cameraStream && (
+        <div className="text-center p-6 space-y-2 z-0">
+          <Camera className="h-8 w-8 text-slate-600 mx-auto animate-pulse" />
+          <p className="text-xs text-slate-500 font-semibold">Camera Stream Connecting...</p>
+        </div>
+      )}
+
+      {cameraStream && (
+        <video
+          ref={(el) => {
+            if (el) {
+              if (el.srcObject !== cameraStream) el.srcObject = cameraStream;
+              el.play().catch(() => {});
+            }
+          }}
+          autoPlay
+          playsInline
+          muted
+          className="absolute inset-0 w-full h-full object-cover transform -scale-x-100 z-10"
+        />
+      )}
+    </>
+  );
+};
+
+// High-performance direct DOM feed display for Candidate Screen Share (0 React re-render lag)
+const CandidateScreenFeed = ({ candidateId, socketRef, screenStream, candidateName }) => {
+  const imgRef = useRef(null);
+  const prevUrlRef = useRef(null);
+  const [hasScreenFrame, setHasScreenFrame] = useState(false);
+
+  useEffect(() => {
+    const socket = socketRef?.current;
+    if (!socket) return;
+
+    const handleScreenUpdate = ({ candidateId: frameCId, frameBuffer, imageData }) => {
+      if (String(frameCId) !== String(candidateId)) return;
+      if (!imgRef.current) return;
+
+      const buffer = frameBuffer || imageData;
+      let newUrl = null;
+      if (buffer instanceof ArrayBuffer || buffer instanceof Blob || ArrayBuffer.isView(buffer)) {
+        const blob = buffer instanceof Blob ? buffer : new Blob([buffer], { type: 'image/jpeg' });
+        newUrl = URL.createObjectURL(blob);
+      } else if (typeof buffer === 'string') {
+        newUrl = buffer;
+      }
+
+      if (newUrl) {
+        const oldUrl = prevUrlRef.current;
+        imgRef.current.src = newUrl;
+        prevUrlRef.current = newUrl;
+        setHasScreenFrame(true);
+
+        if (oldUrl && oldUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(oldUrl);
+        }
+      }
+    };
+
+    socket.on('candidate-screen-frame-update', handleScreenUpdate);
+    return () => {
+      socket.off('candidate-screen-frame-update', handleScreenUpdate);
+      if (prevUrlRef.current && prevUrlRef.current.startsWith('blob:')) {
+        URL.revokeObjectURL(prevUrlRef.current);
+      }
+    };
+  }, [socketRef, candidateId]);
+
+  if (screenStream) {
+    return (
+      <video
+        ref={(el) => {
+          if (el) {
+            if (el.srcObject !== screenStream) el.srcObject = screenStream;
+            el.play().catch(() => {});
+          }
+        }}
+        autoPlay
+        playsInline
+        muted
+        className="w-full h-full object-contain"
+      />
+    );
+  }
+
+  return (
+    <>
+      <img
+        ref={imgRef}
+        alt={`${candidateName}'s Screen`}
+        className={`w-full h-full object-contain ${hasScreenFrame ? 'block' : 'hidden'}`}
+      />
+      {!hasScreenFrame && (
+        <div className="text-center p-12 space-y-3">
+          <Monitor className="h-16 w-16 text-slate-700 mx-auto animate-pulse" />
+          <h4 className="text-sm font-bold text-slate-400">Screen Share Feed Pending or Disconnected</h4>
+          <p className="text-xs text-slate-600 max-w-sm mx-auto">
+            Candidate has not started screen sharing yet or is in Round 1 / Round 2. Screen share activates during Round 3.
+          </p>
+        </div>
+      )}
+    </>
+  );
+};
+
 const LiveProctor = () => {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -33,8 +197,6 @@ const LiveProctor = () => {
 
   // Streams map: { [candidateIdStr]: { camera: Stream, screen: Stream } }
   const [candidateStreams, setCandidateStreams] = useState({});
-  const [socketFrames, setSocketFrames] = useState({});
-  const [socketScreenFrames, setSocketScreenFrames] = useState({});
   const pcsRef = useRef({});
   const iceQueuesRef = useRef({});
   const socketRef = useRef(null);
@@ -65,8 +227,11 @@ const LiveProctor = () => {
         pc = new RTCPeerConnection({
           iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' }
-          ]
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' }
+          ],
+          iceCandidatePoolSize: 10,
+          bundlePolicy: 'max-bundle'
         });
 
         pcsRef.current[pcKey] = pc;
@@ -403,35 +568,21 @@ const LiveProctor = () => {
 
                 {/* Feed Display Frame */}
                 <div className="relative aspect-[4/3] bg-slate-950 flex items-center justify-center overflow-hidden">
-                  {/* Layer 1: Image Snapshot / Real-Time Socket Stream */}
-                  {activeCameraImage ? (
-                    <img
-                      src={activeCameraImage}
-                      alt={`${session.candidateName}'s Feed`}
-                      className="absolute inset-0 w-full h-full object-cover transform -scale-x-100 z-0"
-                    />
-                  ) : (
-                    <div className="text-center p-6 space-y-2 z-0">
-                      <Camera className="h-8 w-8 text-slate-600 mx-auto animate-pulse" />
-                      <p className="text-xs text-slate-500 font-semibold">Camera Stream Connecting...</p>
-                    </div>
-                  )}
-
-                  {/* Layer 2: Live WebRTC Video Stream (Overlayed on top when playing) */}
-                  {cameraStream && (
-                    <video
-                      ref={(el) => {
-                        if (el) {
-                          if (el.srcObject !== cameraStream) el.srcObject = cameraStream;
-                          el.play().catch(() => {});
-                        }
-                      }}
-                      autoPlay
-                      playsInline
-                      muted
-                      className="absolute inset-0 w-full h-full object-cover transform -scale-x-100 z-10"
-                    />
-                  )}
+                  <CandidateCameraFeed
+                    candidateId={session.candidateId}
+                    socketRef={socketRef}
+                    cameraStream={cameraStream}
+                    initialImage={
+                      Boolean(session.latestBase64Frame && session.latestBase64Frame.length > 500)
+                        ? session.latestBase64Frame
+                        : (session.latestImagePath
+                            ? (session.latestImagePath.startsWith('http')
+                                ? session.latestImagePath
+                                : `${API_BASE_URL}/${session.latestImagePath.replace(/^\//, '')}`)
+                            : null)
+                    }
+                    candidateName={session.candidateName}
+                  />
 
                   {/* Left Top Badge: Live indicator */}
                   <div className="absolute top-3 left-3 bg-red-600/90 backdrop-blur-xs text-white px-2.5 py-0.5 rounded-full flex items-center space-x-1 shadow-md">
@@ -598,65 +749,32 @@ const LiveProctor = () => {
 
               {/* Modal Body: Large Screen Share Feed + Picture-in-Picture Camera Overlay */}
               <div className="flex-1 bg-black relative flex items-center justify-center min-h-0 overflow-hidden">
-                {screenStream ? (
-                  <video
-                    ref={(el) => {
-                      if (el) {
-                        if (el.srcObject !== screenStream) el.srcObject = screenStream;
-                        el.play().catch(() => {});
-                      }
-                    }}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="w-full h-full object-contain"
-                  />
-                ) : socketScreenFrame ? (
-                  <img
-                    src={socketScreenFrame}
-                    alt={`${selectedCandidate.candidateName}'s Screen Share`}
-                    className="w-full h-full object-contain"
-                  />
-                ) : (
-                  <div className="text-center p-12 space-y-3">
-                    <Monitor className="h-16 w-16 text-slate-700 mx-auto animate-pulse" />
-                    <h4 className="text-sm font-bold text-slate-400">Screen Share Feed Pending or Disconnected</h4>
-                    <p className="text-xs text-slate-600 max-w-sm mx-auto">
-                      Candidate has not started screen sharing yet or is in Round 1 / Round 2. Screen share activates during Round 3.
-                    </p>
-                  </div>
-                )}
+                <CandidateScreenFeed
+                  candidateId={selectedCandidate.candidateId}
+                  socketRef={socketRef}
+                  screenStream={screenStream}
+                  candidateName={selectedCandidate.candidateName}
+                />
 
                 {/* PICTURE-IN-PICTURE CAMERA OVERLAY (Top-Right Corner) */}
                 <div className="absolute top-4 right-4 w-64 aspect-[4/3] bg-slate-950 border-2 border-brand-500/70 rounded-2xl overflow-hidden shadow-2xl z-20 group">
-                  {activeCameraImage ? (
-                    <img
-                      src={activeCameraImage}
-                      alt="Camera Feed"
-                      className="absolute inset-0 w-full h-full object-cover transform -scale-x-100 z-0"
-                    />
-                  ) : (
-                    <div className="h-full flex items-center justify-center text-slate-600 z-0">
-                      <Camera className="h-8 w-8" />
-                    </div>
-                  )}
+                  <CandidateCameraFeed
+                    candidateId={selectedCandidate.candidateId}
+                    socketRef={socketRef}
+                    cameraStream={cameraStream}
+                    initialImage={
+                      Boolean(selectedCandidate.latestBase64Frame && selectedCandidate.latestBase64Frame.length > 500)
+                        ? selectedCandidate.latestBase64Frame
+                        : (selectedCandidate.latestImagePath
+                            ? (selectedCandidate.latestImagePath.startsWith('http')
+                                ? selectedCandidate.latestImagePath
+                                : `${API_BASE_URL}/${selectedCandidate.latestImagePath.replace(/^\//, '')}`)
+                            : null)
+                    }
+                    candidateName={selectedCandidate.candidateName}
+                  />
 
-                  {cameraStream && (
-                    <video
-                      ref={(el) => {
-                        if (el) {
-                          if (el.srcObject !== cameraStream) el.srcObject = cameraStream;
-                          el.play().catch(() => {});
-                        }
-                      }}
-                      autoPlay
-                      playsInline
-                      muted
-                      className="absolute inset-0 w-full h-full object-cover transform -scale-x-100 z-10"
-                    />
-                  )}
-
-                  <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/80 text-[10px] font-bold text-rose-400 rounded-full flex items-center space-x-1">
+                  <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/80 text-[10px] font-bold text-rose-400 rounded-full flex items-center space-x-1 z-20">
                     <span className="h-1.5 w-1.5 bg-rose-500 rounded-full animate-ping" />
                     <span>Camera Feed</span>
                   </div>
