@@ -89,6 +89,14 @@ const resultSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    isDisqualified: {
+      type: Boolean,
+      default: false,
+    },
+    disqualificationReason: {
+      type: String,
+      default: '',
+    },
     submittedAt: {
       type: Date,
       default: Date.now,

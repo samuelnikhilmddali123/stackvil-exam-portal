@@ -592,6 +592,24 @@ const submitRound1 = async (req, res, next) => {
     };
     result.warningsCount = Math.max(result.warningsCount || 0, warningsCount || 0);
 
+    if (result.warningsCount >= 5) {
+      result.isDisqualified = true;
+      result.disqualificationReason = 'Exceeded maximum warning limit (5/5)';
+      result.status = 'Fail';
+      await result.save();
+
+      await User.findByIdAndUpdate(userId, {
+        status: 'disqualified',
+        disqualificationReason: 'Exceeded maximum warning limit (5/5)',
+      });
+
+      return res.status(403).json({
+        success: false,
+        isDisqualified: true,
+        message: 'You are out of the exam due to multiple warning violations',
+      });
+    }
+
     await result.save();
 
     res.status(200).json({
@@ -710,6 +728,24 @@ const submitRound2 = async (req, res, next) => {
       totalTimeTaken: totalTimeTaken || 0,
     };
     result.warningsCount = Math.max(result.warningsCount || 0, warningsCount || 0);
+
+    if (result.warningsCount >= 5) {
+      result.isDisqualified = true;
+      result.disqualificationReason = 'Exceeded maximum warning limit (5/5)';
+      result.status = 'Fail';
+      await result.save();
+
+      await User.findByIdAndUpdate(userId, {
+        status: 'disqualified',
+        disqualificationReason: 'Exceeded maximum warning limit (5/5)',
+      });
+
+      return res.status(403).json({
+        success: false,
+        isDisqualified: true,
+        message: 'You are out of the exam due to multiple warning violations',
+      });
+    }
 
     // Calculate Overall stats
     result.responses = [...result.round1.responses, ...result.round2.responses];
@@ -1390,6 +1426,24 @@ const submitRound3 = async (req, res, next) => {
       totalTimeTaken: totalTimeTaken || 0,
     };
     result.warningsCount = Math.max(result.warningsCount || 0, warningsCount || 0);
+
+    if (result.warningsCount >= 5) {
+      result.isDisqualified = true;
+      result.disqualificationReason = 'Exceeded maximum warning limit (5/5)';
+      result.status = 'Fail';
+      await result.save();
+
+      await User.findByIdAndUpdate(userId, {
+        status: 'disqualified',
+        disqualificationReason: 'Exceeded maximum warning limit (5/5)',
+      });
+
+      return res.status(403).json({
+        success: false,
+        isDisqualified: true,
+        message: 'You are out of the exam due to multiple warning violations',
+      });
+    }
 
     // Update overall aggregate score
     result.score = result.round1.score + result.round2.score + result.round3.score;

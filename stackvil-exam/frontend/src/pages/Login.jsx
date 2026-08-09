@@ -32,9 +32,12 @@ const Login = ({ isAdmin = false }) => {
     },
   });
 
+  const [authError, setAuthError] = useState('');
+
   const onSubmit = async (data) => {
     try {
       setIsSubmitting(true);
+      setAuthError('');
       const user = await login(data.emailAddress, data.userPassword, isAdmin ? 'admin' : 'candidate');
       
       // Redirect based on role
@@ -45,6 +48,7 @@ const Login = ({ isAdmin = false }) => {
       }
     } catch (err) {
       console.error(err);
+      setAuthError(err.message || 'Login failed.');
     } finally {
       setIsSubmitting(false);
     }
@@ -75,6 +79,13 @@ const Login = ({ isAdmin = false }) => {
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" autoComplete="off">
             <input type="text" name="dummy_email" style={{ position: 'absolute', top: '-1000px', left: '-1000px' }} tabIndex={-1} readOnly />
             <input type="password" name="dummy_password" style={{ position: 'absolute', top: '-1000px', left: '-1000px' }} tabIndex={-1} readOnly />
+            
+            {authError && (
+              <div className="p-3.5 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/50 rounded-2xl text-xs font-bold text-rose-600 dark:text-rose-400 flex items-center space-x-2 animate-shake text-left">
+                <ShieldAlert className="h-5 w-5 shrink-0 text-rose-500" />
+                <span>{authError}</span>
+              </div>
+            )}
             
             {/* Email input */}
             <div className="space-y-1.5 text-left">
@@ -258,6 +269,13 @@ const Login = ({ isAdmin = false }) => {
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" autoComplete="off">
               <input type="text" name="dummy_email" style={{ position: 'absolute', top: '-1000px', left: '-1000px' }} tabIndex={-1} readOnly />
               <input type="password" name="dummy_password" style={{ position: 'absolute', top: '-1000px', left: '-1000px' }} tabIndex={-1} readOnly />
+
+              {authError && (
+                <div className="p-3.5 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/50 rounded-2xl text-xs font-bold text-rose-600 dark:text-rose-400 flex items-center space-x-2 animate-shake text-left">
+                  <ShieldAlert className="h-5 w-5 shrink-0 text-rose-500" />
+                  <span>{authError}</span>
+                </div>
+              )}
 
               {/* Email input */}
               <div className="space-y-1.5">

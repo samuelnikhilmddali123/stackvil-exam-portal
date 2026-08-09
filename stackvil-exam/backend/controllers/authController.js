@@ -29,9 +29,32 @@ const login = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
-    // Check if account active
+    // Check if account active or disqualified
     if (user.status === 'inactive') {
       return res.status(403).json({ success: false, message: 'Your account is deactivated' });
+    }
+
+    if (user.role === 'candidate') {
+      const Result = require('../models/Result');
+      const disqualifiedResult = await Result.findOne({
+        candidate: user._id,
+        $or: [
+          { isDisqualified: true },
+          { warningsCount: { $gte: 5 } }
+        ]
+      });
+
+      if (user.status === 'disqualified' || disqualifiedResult) {
+        if (user.status !== 'disqualified') {
+          user.status = 'disqualified';
+          user.disqualificationReason = 'Exceeded maximum warning limit (5/5)';
+          await user.save();
+        }
+        return res.status(403).json({
+          success: false,
+          message: 'You are out of the exam due to multiple warning violations',
+        });
+      }
     }
 
     // Check if password matches

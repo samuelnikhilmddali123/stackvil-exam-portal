@@ -45,10 +45,28 @@ const logWarning = async (req, res, next) => {
     await proctorLog.save();
 
     // Sync warnings count in the Result collection in real-time (if Result exists)
-    await Result.updateOne(
-      { candidate: userId, exam: examId },
-      { $set: { warningsCount: nextWarningNumber } }
-    );
+    if (nextWarningNumber >= 5) {
+      await Result.updateOne(
+        { candidate: userId, exam: examId },
+        { 
+          $set: { 
+            warningsCount: nextWarningNumber,
+            isDisqualified: true,
+            disqualificationReason: 'Exceeded maximum warning limit (5/5)',
+            status: 'Fail'
+          } 
+        }
+      );
+      await User.findByIdAndUpdate(userId, {
+        status: 'disqualified',
+        disqualificationReason: 'Exceeded maximum warning limit (5/5)'
+      });
+    } else {
+      await Result.updateOne(
+        { candidate: userId, exam: examId },
+        { $set: { warningsCount: nextWarningNumber } }
+      );
+    }
 
     // Emit socket event to admin proctor room in real-time
     if (req.app && req.app.get('io')) {

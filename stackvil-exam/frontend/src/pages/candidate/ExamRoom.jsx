@@ -25,10 +25,12 @@ import WarningModal from '../../components/WarningModal';
 import CodeEditor from '../../components/CodeEditor';
 import LoadingSkeleton from '../../components/LoadingSkeleton';
 import Round3VSCodeView from '../../components/vscode/Round3VSCodeView';
+import { useAuth } from '../../context/AuthContext';
 
 const ExamRoom = () => {
   const { examId } = useParams();
   const navigate = useNavigate();
+  const { logout } = useAuth();
 
   const proctorRef = useRef(null);
   const startTimeRef = useRef(Date.now());
@@ -366,17 +368,46 @@ const ExamRoom = () => {
   };
 
   const handleWarningLogged = (count, type) => {
-    setWarningsCount(count);
+    const cappedCount = Math.min(5, count);
+    setWarningsCount(cappedCount);
     
     if (count >= 5) {
-      toast.error('Violation warning limit exceeded. Submitting examination.');
-      handleAutoSubmit(count);
+      toast.error('You are out of the exam due to multiple warning violations');
+      handleDisqualificationAutoSubmit(cappedCount);
     } else {
       setWarningModal({
         isOpen: true,
         title: type,
-        message: `Your actions triggered a security warning. Please focus on the screen. Warnings issued: ${count}/5`,
+        message: `Your actions triggered a security warning. Please focus on the screen. Warnings issued: ${cappedCount}/5`,
       });
+    }
+  };
+
+  const handleDisqualificationAutoSubmit = async (count = 5) => {
+    try {
+      setIsSubmitting(true);
+      setIsExamActive(false);
+      exitFullscreen();
+
+      const totalTimeTaken = Math.round((Date.now() - startTimeRef.current) / 1000);
+      const payload = {
+        responses: questions.map((q) => ({
+          questionId: q._id,
+          answer: answers[q._id] !== undefined ? answers[q._id] : '',
+          timeSpent: questionTimes[q._id] || 0,
+        })),
+        totalTimeTaken,
+        warningsCount: 5
+      };
+
+      await axios.post(`/api/candidate/exams/${examId}/round/${currentRound}/submit`, payload).catch(() => {});
+    } catch (err) {
+      console.error(err);
+    } finally {
+      localStorage.clear();
+      logout();
+      toast.error('You are out of the exam due to multiple warning violations');
+      navigate('/login', { replace: true });
     }
   };
 
@@ -611,6 +642,15 @@ const ExamRoom = () => {
 
       const res = await axios.post(`/api/candidate/exams/${examId}/round/${currentRound}/submit`, payload);
 
+      if (warns >= 5 || res.data.isDisqualified) {
+        exitFullscreen();
+        localStorage.clear();
+        logout();
+        toast.error('You are out of the exam due to multiple warning violations');
+        navigate('/login', { replace: true });
+        return;
+      }
+
       if (res.data.success) {
         localStorage.removeItem(`exam_${examId}_round${currentRound}_answers`);
 
@@ -629,6 +669,14 @@ const ExamRoom = () => {
         }
       }
     } catch (error) {
+      if (error.response?.status === 403 || error.response?.data?.isDisqualified) {
+        exitFullscreen();
+        localStorage.clear();
+        logout();
+        toast.error('You are out of the exam due to multiple warning violations');
+        navigate('/login', { replace: true });
+        return;
+      }
       toast.error(error.response?.data?.message || 'Failed to submit round answers.');
       setIsExamActive(true);
     } finally {

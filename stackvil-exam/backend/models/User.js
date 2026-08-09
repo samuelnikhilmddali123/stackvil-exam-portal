@@ -33,8 +33,12 @@ const userSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['active', 'inactive'],
+      enum: ['active', 'inactive', 'disqualified'],
       default: 'active',
+    },
+    disqualificationReason: {
+      type: String,
+      default: '',
     },
     otp: {
       code: String,
