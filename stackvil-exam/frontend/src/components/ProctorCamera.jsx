@@ -115,7 +115,7 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
     setStream(null);
   };
 
-  // High-speed real-time socket frame stream (10 FPS ~ 100ms) using binary Blobs
+  // Socket canvas frame fallback stream (1.25 FPS ~ 800ms) for backup preview only
   useEffect(() => {
     if (permission !== 'granted' || !stream) return;
 
@@ -148,7 +148,7 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
         isSending = false;
         console.warn('Socket camera frame emit error:', e);
       }
-    }, 100);
+    }, 800);
 
     return () => clearInterval(frameInterval);
   }, [permission, stream, examId, candidateId]);
@@ -171,6 +171,10 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
 
   const initiateWebRPeerConnection = async (adminSocketId) => {
     try {
+      if (!streamRef.current) {
+        console.warn('Postponing WebRTC connection: camera stream not active yet.');
+        return;
+      }
       if (peersRef.current[adminSocketId]) {
         peersRef.current[adminSocketId].close();
       }

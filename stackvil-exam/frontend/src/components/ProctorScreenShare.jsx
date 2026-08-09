@@ -339,7 +339,7 @@ const ProctorScreenShare = forwardRef(({
         isSending = false;
         console.warn('Socket screen frame emit error:', e);
       }
-    }, 500);
+    }, 1200);
 
     return () => clearInterval(screenFrameInterval);
   }, [isSharing, stream, examId, candidateId]);
