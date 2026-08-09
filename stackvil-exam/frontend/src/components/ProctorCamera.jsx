@@ -287,6 +287,20 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
       canvas.height = video.videoHeight || 240;
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
+      // Emit base64 image frame over socket for real-time live proctoring stream
+      try {
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
+        if (socketRef.current) {
+          socketRef.current.emit('candidate-frame', {
+            examId,
+            candidateId,
+            imageData: dataUrl
+          });
+        }
+      } catch (e) {
+        console.warn('Socket frame emit error:', e);
+      }
+
       // Convert canvas to Blob
       return new Promise((resolve) => {
         canvas.toBlob(async (blob) => {
