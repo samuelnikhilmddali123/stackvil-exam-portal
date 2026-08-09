@@ -44,7 +44,7 @@ const LiveProctor = () => {
 
     const interval = setInterval(() => {
       fetchLiveSessions(true); // silent fetch in background
-    }, 10000);
+    }, 3000);
 
     return () => clearInterval(interval);
   }, [pollingActive]);
@@ -135,6 +135,9 @@ const LiveProctor = () => {
     });
     socketRef.current = socket;
 
+    socket.on('connect', () => {
+      socket.emit('join-admin-proctor');
+    });
     socket.emit('join-admin-proctor');
 
     socket.on('candidate-online-webrtc', ({ socketId, candidateId, streamType }) => {

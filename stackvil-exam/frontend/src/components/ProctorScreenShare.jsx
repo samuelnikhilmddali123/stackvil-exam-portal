@@ -249,6 +249,9 @@ const ProctorScreenShare = forwardRef(({
       });
       socketRef.current = socket;
 
+      socket.on('connect', () => {
+        socket.emit('join-exam-session', { examId, candidateId, streamType: 'screen' });
+      });
       socket.emit('join-exam-session', { examId, candidateId, streamType: 'screen' });
 
       socket.on('admin-online-ping', ({ adminSocketId, streamType }) => {

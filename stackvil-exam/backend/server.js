@@ -104,10 +104,10 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin) || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+      if (!origin || allowedOrigins.includes(origin) || origin.includes('localhost') || origin.includes('127.0.0.1') || origin.includes('stackvil') || origin.includes('vercel.app')) {
         return callback(null, true);
       }
-      return callback(new Error(`Origin ${origin} not allowed by Socket.IO CORS`));
+      return callback(null, true);
     },
     methods: ['GET', 'POST'],
     credentials: true,

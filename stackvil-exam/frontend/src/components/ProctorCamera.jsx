@@ -229,6 +229,9 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
       });
       socketRef.current = socket;
 
+      socket.on('connect', () => {
+        socket.emit('join-exam-session', { examId, candidateId, streamType: 'camera' });
+      });
       socket.emit('join-exam-session', { examId, candidateId, streamType: 'camera' });
 
       socket.on('admin-online-ping', ({ adminSocketId }) => {
