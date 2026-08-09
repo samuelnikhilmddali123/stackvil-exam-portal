@@ -170,6 +170,44 @@ io.on('connection', (socket) => {
     });
   });
 
+  // Targeted Admin-driven WebRTC handshake events
+  socket.on('webrtc-offer', ({ targetSocketId, candidateId, offer, examId, streamType = 'camera' }) => {
+    const targetRoom = targetSocketId || (candidateId ? `candidate-${candidateId}` : null);
+    if (targetRoom) {
+      io.to(targetRoom).emit('webrtc-offer', {
+        senderSocketId: socket.id,
+        offer,
+        candidateId,
+        examId,
+        streamType
+      });
+    }
+  });
+
+  socket.on('webrtc-answer', ({ targetSocketId, candidateId, answer, examId, streamType = 'camera' }) => {
+    if (targetSocketId) {
+      io.to(targetSocketId).emit('webrtc-answer', {
+        senderSocketId: socket.id,
+        answer,
+        candidateId,
+        examId,
+        streamType
+      });
+    }
+  });
+
+  socket.on('webrtc-ice-candidate', ({ targetSocketId, candidateId, candidate, streamType = 'camera' }) => {
+    const target = targetSocketId || (candidateId ? `candidate-${candidateId}` : null);
+    if (target) {
+      io.to(target).emit('webrtc-ice-candidate', {
+        senderSocketId: socket.id,
+        candidate,
+        candidateId,
+        streamType
+      });
+    }
+  });
+
   // Admin responds directly to a specific candidate
   socket.on('send-admin-ping-to-candidate', ({ toSocketId, streamType = 'camera' }) => {
     io.to(toSocketId).emit('admin-online-ping', { adminSocketId: socket.id, streamType });

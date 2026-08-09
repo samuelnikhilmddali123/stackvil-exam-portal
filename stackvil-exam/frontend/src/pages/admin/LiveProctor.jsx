@@ -60,7 +60,101 @@ const CandidateCameraFeed = ({ candidateId, socketRef, cameraStream, initialImag
 
   useEffect(() => {
     const socket = socketRef?.current;
-    if (!socket) return;
+    if (!socket || !candidateId) return;
+
+    let pc = null;
+    const startPeerConnection = async () => {
+      try {
+        pc = new RTCPeerConnection({
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' },
+            { urls: 'stun:global.stun.twilio.com:3478' },
+            {
+              urls: 'turn:openrelay.metered.ca:80',
+              username: 'openrelayproject',
+              credential: 'openrelayproject'
+            },
+            {
+              urls: 'turn:openrelay.metered.ca:443',
+              username: 'openrelayproject',
+              credential: 'openrelayproject'
+            },
+            {
+              urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+              username: 'openrelayproject',
+              credential: 'openrelayproject'
+            }
+          ],
+          iceCandidatePoolSize: 10,
+          bundlePolicy: 'max-bundle'
+        });
+
+        pc.addTransceiver('video', { direction: 'recvonly' });
+
+        pc.ontrack = (event) => {
+          if (videoRef.current) {
+            const remoteStream = (event.streams && event.streams[0]) ? event.streams[0] : new MediaStream([event.track]);
+            videoRef.current.srcObject = remoteStream;
+            videoRef.current.play().then(() => setIsVideoPlaying(true)).catch(() => {
+              videoRef.current.muted = true;
+              videoRef.current.play().then(() => setIsVideoPlaying(true)).catch(() => {});
+            });
+          }
+        };
+
+        pc.onicecandidate = (event) => {
+          if (event.candidate && socket) {
+            socket.emit('webrtc-ice-candidate', {
+              candidateId,
+              candidate: event.candidate,
+              streamType: 'camera'
+            });
+          }
+        };
+
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        socket.emit('webrtc-offer', {
+          candidateId,
+          offer,
+          streamType: 'camera'
+        });
+      } catch (err) {
+        console.warn('Error starting admin WebRTC offer:', err);
+      }
+    };
+
+    startPeerConnection();
+
+    const handleAnswer = async ({ senderSocketId, answer, streamType }) => {
+      if (streamType && streamType !== 'camera') return;
+      if (pc && answer) {
+        try {
+          await pc.setRemoteDescription(new RTCSessionDescription(answer));
+        } catch (e) {
+          console.warn('Error setting WebRTC answer:', e);
+        }
+      }
+    };
+
+    const handleIce = async ({ senderSocketId, candidate, streamType }) => {
+      if (streamType && streamType !== 'camera') return;
+      if (pc && candidate) {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (e) {
+          console.warn('Error adding ICE candidate on admin side:', e);
+        }
+      }
+    };
+
+    socket.on('webrtc-answer', handleAnswer);
+    socket.on('webrtc-ice-candidate', handleIce);
 
     const handleFrameUpdate = ({ candidateId: frameCId, frameBuffer, imageData }) => {
       if (String(frameCId) !== String(candidateId)) return;
@@ -89,7 +183,12 @@ const CandidateCameraFeed = ({ candidateId, socketRef, cameraStream, initialImag
 
     socket.on('candidate-frame-update', handleFrameUpdate);
     return () => {
+      socket.off('webrtc-answer', handleAnswer);
+      socket.off('webrtc-ice-candidate', handleIce);
       socket.off('candidate-frame-update', handleFrameUpdate);
+      if (pc) {
+        pc.close();
+      }
       if (prevUrlRef.current && prevUrlRef.current.startsWith('blob:')) {
         URL.revokeObjectURL(prevUrlRef.current);
       }

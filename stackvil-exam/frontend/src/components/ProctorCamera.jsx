@@ -308,6 +308,85 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
         initiateWebRPeerConnection(adminSocketId);
       });
 
+      socket.on('webrtc-offer', async ({ senderSocketId, offer, streamType }) => {
+        if (streamType && streamType !== 'camera') return;
+        if (!streamRef.current) return;
+
+        try {
+          if (peersRef.current[senderSocketId]) {
+            peersRef.current[senderSocketId].close();
+          }
+
+          const pc = new RTCPeerConnection({
+            iceServers: [
+              { urls: 'stun:stun.l.google.com:19302' },
+              { urls: 'stun:stun1.l.google.com:19302' },
+              { urls: 'stun:stun2.l.google.com:19302' },
+              { urls: 'stun:stun3.l.google.com:19302' },
+              { urls: 'stun:stun4.l.google.com:19302' },
+              { urls: 'stun:global.stun.twilio.com:3478' },
+              {
+                urls: 'turn:openrelay.metered.ca:80',
+                username: 'openrelayproject',
+                credential: 'openrelayproject'
+              },
+              {
+                urls: 'turn:openrelay.metered.ca:443',
+                username: 'openrelayproject',
+                credential: 'openrelayproject'
+              },
+              {
+                urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+                username: 'openrelayproject',
+                credential: 'openrelayproject'
+              }
+            ],
+            iceCandidatePoolSize: 10,
+            bundlePolicy: 'max-bundle'
+          });
+
+          peersRef.current[senderSocketId] = pc;
+
+          streamRef.current.getTracks().forEach(track => pc.addTrack(track, streamRef.current));
+
+          pc.onicecandidate = (event) => {
+            if (event.candidate && socketRef.current) {
+              socketRef.current.emit('webrtc-ice-candidate', {
+                targetSocketId: senderSocketId,
+                candidate: event.candidate,
+                streamType: 'camera'
+              });
+            }
+          };
+
+          await pc.setRemoteDescription(new RTCSessionDescription(offer));
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+
+          socket.emit('webrtc-answer', {
+            targetSocketId: senderSocketId,
+            answer,
+            candidateId,
+            examId,
+            streamType: 'camera'
+          });
+        } catch (err) {
+          console.error('Error responding to Admin WebRTC offer:', err);
+        }
+      });
+
+      socket.on('webrtc-ice-candidate', async ({ senderSocketId, candidate, streamType }) => {
+        if (streamType && streamType !== 'camera') return;
+        const pc = peersRef.current[senderSocketId];
+        if (pc && candidate) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          } catch (e) {
+            console.warn('Error adding ICE candidate on candidate side:', e);
+          }
+        }
+      });
+
       socket.on('receive-webrtc-signal', ({ fromSocketId, signalData, streamType }) => {
         if (!streamType || streamType === 'camera') {
           handleWebRTCSignal(fromSocketId, signalData);
