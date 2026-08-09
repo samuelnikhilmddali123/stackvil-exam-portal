@@ -365,7 +365,28 @@ const LiveProctor = () => {
 
                 {/* Feed Display Frame */}
                 <div className="relative aspect-[4/3] bg-slate-950 flex items-center justify-center overflow-hidden">
-                  {isCameraStreamLive ? (
+                  {/* Layer 1: Image Snapshot (Always rendered if image is available) */}
+                  {(hasBase64Image || hasImagePath) ? (
+                    <img
+                      src={
+                        hasBase64Image
+                          ? session.latestBase64Frame
+                          : (session.latestImagePath.startsWith('http')
+                              ? session.latestImagePath
+                              : `${API_BASE_URL}/${session.latestImagePath.replace(/^\//, '')}`)
+                      }
+                      alt={`${session.candidateName}'s Feed`}
+                      className="absolute inset-0 w-full h-full object-cover transform -scale-x-100 z-0"
+                    />
+                  ) : (
+                    <div className="text-center p-6 space-y-2 z-0">
+                      <Camera className="h-8 w-8 text-slate-600 mx-auto animate-pulse" />
+                      <p className="text-xs text-slate-500 font-semibold">Camera Stream Connecting...</p>
+                    </div>
+                  )}
+
+                  {/* Layer 2: Live WebRTC Video Stream (Overlayed on top when playing) */}
+                  {cameraStream && (
                     <video
                       ref={(el) => {
                         if (el) {
@@ -376,25 +397,8 @@ const LiveProctor = () => {
                       autoPlay
                       playsInline
                       muted
-                      className="w-full h-full object-cover transform -scale-x-100"
+                      className="absolute inset-0 w-full h-full object-cover transform -scale-x-100 z-10"
                     />
-                  ) : (hasBase64Image || hasImagePath) ? (
-                    <img
-                      src={
-                        hasBase64Image
-                          ? session.latestBase64Frame
-                          : (session.latestImagePath.startsWith('http')
-                              ? session.latestImagePath
-                              : `${API_BASE_URL}/${session.latestImagePath.replace(/^\//, '')}`)
-                      }
-                      alt={`${session.candidateName}'s Feed`}
-                      className="w-full h-full object-cover transform -scale-x-100"
-                    />
-                  ) : (
-                    <div className="text-center p-6 space-y-2">
-                      <Camera className="h-8 w-8 text-slate-600 mx-auto animate-pulse" />
-                      <p className="text-xs text-slate-500 font-semibold">Camera Stream Connecting...</p>
-                    </div>
                   )}
 
                   {/* Left Top Badge: Live indicator */}
@@ -581,7 +585,25 @@ const LiveProctor = () => {
 
                 {/* PICTURE-IN-PICTURE CAMERA OVERLAY (Top-Right Corner) */}
                 <div className="absolute top-4 right-4 w-64 aspect-[4/3] bg-slate-950 border-2 border-brand-500/70 rounded-2xl overflow-hidden shadow-2xl z-20 group">
-                  {isCameraStreamLive ? (
+                  {(hasBase64Image || hasImagePath) ? (
+                    <img
+                      src={
+                        hasBase64Image
+                          ? selectedCandidate.latestBase64Frame
+                          : (selectedCandidate.latestImagePath.startsWith('http')
+                              ? selectedCandidate.latestImagePath
+                              : `${API_BASE_URL}/${selectedCandidate.latestImagePath.replace(/^\//, '')}`)
+                      }
+                      alt="Camera Feed"
+                      className="absolute inset-0 w-full h-full object-cover transform -scale-x-100 z-0"
+                    />
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-slate-600 z-0">
+                      <Camera className="h-8 w-8" />
+                    </div>
+                  )}
+
+                  {cameraStream && (
                     <video
                       ref={(el) => {
                         if (el) {
@@ -592,24 +614,8 @@ const LiveProctor = () => {
                       autoPlay
                       playsInline
                       muted
-                      className="w-full h-full object-cover transform -scale-x-100"
+                      className="absolute inset-0 w-full h-full object-cover transform -scale-x-100 z-10"
                     />
-                  ) : (hasBase64Image || hasImagePath) ? (
-                    <img
-                      src={
-                        hasBase64Image
-                          ? selectedCandidate.latestBase64Frame
-                          : (selectedCandidate.latestImagePath.startsWith('http')
-                              ? selectedCandidate.latestImagePath
-                              : `${API_BASE_URL}/${selectedCandidate.latestImagePath.replace(/^\//, '')}`)
-                      }
-                      alt="Camera Feed"
-                      className="w-full h-full object-cover transform -scale-x-100"
-                    />
-                  ) : (
-                    <div className="h-full flex items-center justify-center text-slate-600">
-                      <Camera className="h-8 w-8" />
-                    </div>
                   )}
 
                   <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/80 text-[10px] font-bold text-rose-400 rounded-full flex items-center space-x-1">
