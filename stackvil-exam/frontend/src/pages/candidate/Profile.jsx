@@ -85,21 +85,6 @@ const Profile = () => {
   const pendingExams = exams.filter(e => !e.isCompleted);
   const completedExams = results;
 
-  if (pendingExams.length === 0) {
-    return (
-      <div className="min-h-[50vh] flex flex-col items-center justify-center text-center px-4 animate-fadeIn">
-        <div className="max-w-md w-full bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700/50 p-8 shadow-xl space-y-6">
-          <div className="mx-auto h-12 w-12 bg-slate-50 dark:bg-slate-900 rounded-2xl flex items-center justify-center text-slate-400">
-            <Calendar className="h-6 w-6 text-brand-500" />
-          </div>
-          <div className="space-y-2">
-            <h2 className="text-xl font-extrabold text-slate-800 dark:text-white">Exam not scheduled</h2>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-8 animate-fadeIn text-left">
       {/* Welcome Card layout */}
@@ -159,7 +144,7 @@ const Profile = () => {
                   {/* Start Button */}
                   <button
                     onClick={() => navigate(`/candidate/instructions/${exam._id}`)}
-                    className="w-full md:w-auto px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm rounded-xl shadow-md shadow-brand-500/20 hover:scale-[1.01] transition shrink-0 flex items-center justify-center space-x-2"
+                    className="w-full md:w-auto px-6 py-3 bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-bold text-sm rounded-xl shadow-lg shadow-brand-500/20 hover:shadow-brand-500/30 transition flex items-center justify-center space-x-2 shrink-0"
                   >
                     <span>Start Exam</span>
                     <ChevronRight className="h-4 w-4" />
@@ -169,7 +154,7 @@ const Profile = () => {
             </div>
           ) : (
             <div className="p-12 text-center bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/55 text-slate-400 text-sm font-semibold">
-              Exam not scheduled
+              No active examinations currently assigned to your account.
             </div>
           )}
         </div>

@@ -13,17 +13,11 @@ const getAssignedExams = async (req, res, next) => {
   try {
     const userId = req.user.id;
 
-    // Find exams where this candidate is assigned or general active exams
+    // Find exams where this candidate is explicitly assigned and exam is active
     let exams = await Exam.find({
-      $or: [
-        { assignedCandidates: userId },
-        { assignedCandidates: { $size: 0 } },
-        { assignedCandidates: { $exists: false } }
-      ]
+      assignedCandidates: userId,
+      status: 'Active',
     }).select('-questions');
-
-    // Include active exams or exams directly assigned to candidate
-    exams = exams.filter(e => e.status === 'Active' || e.assignedCandidates?.some(c => c.toString() === userId.toString()));
 
     // For each exam, check if candidate already has a result
     const results = await Result.find({ candidate: userId });
@@ -68,7 +62,7 @@ const startExam = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Exam not found' });
     }
 
-    const isAssigned = exam.assignedCandidates.length === 0 || exam.assignedCandidates.some(
+    const isAssigned = exam.assignedCandidates && exam.assignedCandidates.some(
       (candId) => candId.toString() === userId.toString()
     );
 
@@ -505,7 +499,7 @@ const getRound1 = async (req, res, next) => {
     }
 
     // Verify assigned
-    const isAssigned = !exam.assignedCandidates || exam.assignedCandidates.length === 0 || exam.assignedCandidates.some(c => c.toString() === userId.toString());
+    const isAssigned = exam.assignedCandidates && exam.assignedCandidates.some(c => c.toString() === userId.toString());
     if (!isAssigned) {
       return res.status(403).json({ success: false, message: 'You are not assigned to this exam' });
     }
