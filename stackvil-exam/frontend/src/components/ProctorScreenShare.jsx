@@ -14,29 +14,61 @@ import { API_BASE_URL } from '../config/api';
 const ProctorScreenShare = forwardRef(({
   examId,
   onScreenShareStateChange,
-  onWarningLogged
+  onWarningLogged,
+  // Passed from ExamRoom to persist the stream across round transitions
+  persistedStreamRef
 }, ref) => {
   const { user } = useAuth();
   const candidateId = user?._id || user?.id;
 
-  const [stream, setStream] = useState(null);
-  const streamRef = useRef(null);
+  const [stream, setStream] = useState(() => persistedStreamRef?.current || null);
+  const streamRef = useRef(persistedStreamRef?.current || null);
   const videoRef = useRef(null);
   const socketRef = useRef(null);
+  const videoOffscreenRef = useRef(null);
 
-  const [isSharing, setIsSharing] = useState(false);
-  const [isEntireScreen, setIsEntireScreen] = useState(false);
+  const [isSharing, setIsSharing] = useState(!!(persistedStreamRef?.current));
+  const [isEntireScreen, setIsEntireScreen] = useState(!!(persistedStreamRef?.current));
   const [needsManualConfirm, setNeedsManualConfirm] = useState(false);
   const [candidateConfirmed, setCandidateConfirmed] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   const peersRef = useRef({});
   const iceQueuesRef = useRef({});
+  const pendingAdminsRef = useRef(new Set());
 
   useEffect(() => {
-    if (stream && videoRef.current) {
-      videoRef.current.srcObject = stream;
+    if (stream) {
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(e => console.warn(e));
+      }
+      if (!videoOffscreenRef.current) {
+        const v = document.createElement('video');
+        v.autoplay = true;
+        v.playsInline = true;
+        v.muted = true;
+        v.style.position = 'fixed';
+        v.style.bottom = '0px';
+        v.style.right = '0px';
+        v.style.width = '160px';
+        v.style.height = '90px';
+        v.style.opacity = '0.001';
+        v.style.pointerEvents = 'none';
+        v.style.zIndex = '-9999';
+        document.body.appendChild(v);
+        videoOffscreenRef.current = v;
+      }
+      videoOffscreenRef.current.srcObject = stream;
+      videoOffscreenRef.current.play().catch(e => console.warn(e));
     }
+
+    return () => {
+      if (videoOffscreenRef.current && videoOffscreenRef.current.parentNode) {
+        videoOffscreenRef.current.parentNode.removeChild(videoOffscreenRef.current);
+        videoOffscreenRef.current = null;
+      }
+    };
   }, [stream]);
 
   const startScreenShare = async () => {
@@ -47,13 +79,16 @@ const ProctorScreenShare = forwardRef(({
         streamRef.current = null;
       }
 
-      const mediaStream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          cursor: 'always',
-          displaySurface: 'monitor'
-        },
-        audio: false
-      });
+      let mediaStream;
+      try {
+        mediaStream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: false
+        });
+      } catch (errDisplay) {
+        console.warn('Standard getDisplayMedia call failed:', errDisplay);
+        throw errDisplay;
+      }
 
       const videoTrack = mediaStream.getVideoTracks()[0];
       if (!videoTrack) {
@@ -61,25 +96,28 @@ const ProctorScreenShare = forwardRef(({
       }
 
       // Check display surface API if supported
-      const trackSettings = videoTrack.getSettings ? videoTrack.getSettings() : {};
-      const surface = trackSettings.displaySurface;
+      let trackSettings = videoTrack.getSettings ? videoTrack.getSettings() : {};
+      let surface = trackSettings.displaySurface;
 
-      let isEntire = false;
+      // If surface is not available immediately, wait 250ms and re-verify to handle browser race conditions
+      if (surface === undefined) {
+        await new Promise(resolve => setTimeout(resolve, 250));
+        trackSettings = videoTrack.getSettings ? videoTrack.getSettings() : {};
+        surface = trackSettings.displaySurface;
+      }
+
+      let isEntire = true;
       let manualNeeded = false;
 
-      if (surface === 'monitor') {
-        isEntire = true;
-      } else if (surface === 'window' || surface === 'browser') {
-        // Candidate picked single window or tab instead of entire screen!
-        videoTrack.stop();
-        const err = 'Entire Screen sharing is mandatory. Please re-share and select "Entire Screen".';
-        setErrorMsg(err);
-        toast.error(err, { duration: 5000 });
+      // Restrict screen share to Entire Screen only (reject window and browser tab)
+      if (surface === 'window' || surface === 'browser') {
+        mediaStream.getTracks().forEach(t => t.stop());
+        toast.error('Sharing a single window or browser tab is prohibited. You MUST select and share your "Entire Screen".', { duration: 8000 });
+        setErrorMsg('Sharing a single window or browser tab is prohibited. Please select "Entire Screen".');
+        setIsSharing(false);
+        setIsEntireScreen(false);
         if (onScreenShareStateChange) onScreenShareStateChange(false, false);
         return false;
-      } else {
-        // Browser API does not specify surface (e.g. some Firefox/Safari versions)
-        manualNeeded = true;
       }
 
       // Handle user stopping screen share from browser banner ("Stop sharing")
@@ -102,6 +140,10 @@ const ProctorScreenShare = forwardRef(({
 
       setStream(mediaStream);
       streamRef.current = mediaStream;
+      // Persist the stream reference to the parent ExamRoom so it survives round transitions
+      if (persistedStreamRef) {
+        persistedStreamRef.current = mediaStream;
+      }
       setIsSharing(true);
       setIsEntireScreen(isEntire || candidateConfirmed);
       setNeedsManualConfirm(manualNeeded);
@@ -111,6 +153,14 @@ const ProctorScreenShare = forwardRef(({
         onScreenShareStateChange(true, activeState);
       }
 
+      // Flush queued admin WebRTC requests once screen stream is active
+      if (pendingAdminsRef.current.size > 0) {
+        pendingAdminsRef.current.forEach(adminSocketId => {
+          initiateWebRPeerConnection(adminSocketId);
+        });
+        pendingAdminsRef.current.clear();
+      }
+
       if (socketRef.current) {
         socketRef.current.emit('candidate-screenshare-status', {
           examId,
@@ -118,6 +168,7 @@ const ProctorScreenShare = forwardRef(({
           status: 'active',
           isEntireScreen: isEntire
         });
+        socketRef.current.emit('join-exam-session', { examId, candidateId, streamType: 'screen' });
       }
 
       return true;
@@ -138,6 +189,10 @@ const ProctorScreenShare = forwardRef(({
       streamRef.current.getTracks().forEach(t => t.stop());
       streamRef.current = null;
     }
+    // Clear persisted reference too
+    if (persistedStreamRef) {
+      persistedStreamRef.current = null;
+    }
     setStream(null);
     setIsSharing(false);
     setIsEntireScreen(false);
@@ -156,6 +211,12 @@ const ProctorScreenShare = forwardRef(({
 
   const initiateWebRPeerConnection = async (adminSocketId) => {
     try {
+      if (!streamRef.current) {
+        console.warn('Queuing Screen WebRTC connection request: screen stream not active yet.');
+        pendingAdminsRef.current.add(adminSocketId);
+        return;
+      }
+
       if (peersRef.current[adminSocketId]) {
         peersRef.current[adminSocketId].close();
       }
@@ -203,11 +264,13 @@ const ProctorScreenShare = forwardRef(({
           const sender = pc.addTrack(track, streamRef.current);
           if (sender && sender.track && sender.track.kind === 'video') {
             try {
-              const params = sender.getParameters();
-              if (!params.encodings) params.encodings = [{}];
-              params.encodings[0].maxBitrate = 800000; // 800 kbps for HD screen clarity
-              params.encodings[0].maxFramerate = 15;
-              sender.setParameters(params).catch(e => console.warn(e));
+              const params = sender.getParameters ? sender.getParameters() : null;
+              if (params && params.encodings && params.encodings.length > 0) {
+                params.encodings[0].maxBitrate = 4000000; // 4 Mbps for crystal-clear HD screen
+                params.encodings[0].maxFramerate = 30;
+                params.encodings[0].networkPriority = 'high';
+                sender.setParameters(params).catch(e => console.warn(e));
+              }
             } catch (e) {
               console.warn(e);
             }
@@ -250,7 +313,9 @@ const ProctorScreenShare = forwardRef(({
       if (!pc) return;
 
       if (signalData.type === 'answer') {
-        await pc.setRemoteDescription(new RTCSessionDescription(signalData.sdp));
+        if (pc.signalingState === 'have-local-offer') {
+          await pc.setRemoteDescription(new RTCSessionDescription(signalData.sdp)).catch(e => console.warn('Screen setRemoteDescription error:', e));
+        }
         const queue = iceQueuesRef.current[fromSocketId] || [];
         for (const candidate of queue) {
           await pc.addIceCandidate(candidate).catch(e => console.warn(e));
@@ -277,10 +342,16 @@ const ProctorScreenShare = forwardRef(({
       });
       socketRef.current = socket;
 
-      socket.on('connect', () => {
+      const notifyAdmin = () => {
         socket.emit('join-exam-session', { examId, candidateId, streamType: 'screen' });
+        socket.emit('candidate-online-webrtc', { socketId: socket.id, candidateId, examId, streamType: 'screen' });
+        socket.emit('candidate-screenshare-status', { examId, candidateId, status: 'active', isEntireScreen: true });
+      };
+
+      socket.on('connect', () => {
+        notifyAdmin();
       });
-      socket.emit('join-exam-session', { examId, candidateId, streamType: 'screen' });
+      notifyAdmin();
 
       socket.on('admin-online-ping', ({ adminSocketId, streamType }) => {
         if (!streamType || streamType === 'screen') {
@@ -306,40 +377,62 @@ const ProctorScreenShare = forwardRef(({
     }
   }, [isSharing, examId, candidateId]);
 
-  // Real-time socket screen frame fallback streaming (2 FPS ~ 500ms)
+  // Real-time socket screen frame fallback streaming — 720p, 80% quality, ~6.7 FPS (150ms)
   useEffect(() => {
     if (!isSharing || !stream) return;
 
     const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    canvas.width = 960;
-    canvas.height = 540;
+    const ctx = canvas.getContext('2d', { alpha: false }); // alpha:false speeds up canvas operations
+    canvas.width = 1280;
+    canvas.height = 720;
 
     let isSending = false;
+    let consecutiveBlackFrames = 0;
 
     const screenFrameInterval = setInterval(() => {
-      if (isSending || !videoRef.current || !socketRef.current || !socketRef.current.connected) return;
-      const video = videoRef.current;
-      if (!video || !video.videoWidth || !video.videoHeight || video.readyState < 2) return;
+      if (isSending || !socketRef.current) return;
+
+      // Priority: active visible video > offscreen keepalive video
+      const video = (videoRef.current && videoRef.current.videoWidth > 0 && !videoRef.current.paused && videoRef.current.readyState >= 2)
+        ? videoRef.current
+        : (videoOffscreenRef.current && videoOffscreenRef.current.videoWidth > 0 && !videoOffscreenRef.current.paused)
+          ? videoOffscreenRef.current
+          : null;
+      if (!video) return;
 
       isSending = true;
       try {
-        ctx.drawImage(video, 0, 0, 960, 540);
-        canvas.toBlob((blob) => {
-          isSending = false;
-          if (blob && socketRef.current && socketRef.current.connected) {
+        if (video.videoWidth > 0 && video.videoHeight > 0) {
+          ctx.drawImage(video, 0, 0, 1280, 720);
+
+          // Guard: skip sending solid black frames (Chrome GPU culling artifact)
+          const samplePixel = ctx.getImageData(640, 360, 1, 1).data;
+          if (samplePixel[0] === 0 && samplePixel[1] === 0 && samplePixel[2] === 0) {
+            consecutiveBlackFrames++;
+            if (consecutiveBlackFrames < 5) { // Allow first few while stream initialises
+              isSending = false;
+              return;
+            }
+          } else {
+            consecutiveBlackFrames = 0;
+          }
+
+          // High quality: 80% JPEG for crisp text / code readability
+          const imageData = canvas.toDataURL('image/jpeg', 0.8);
+          if (imageData && socketRef.current) {
             socketRef.current.emit('candidate-screen-frame', {
               examId,
               candidateId,
-              frameBuffer: blob
+              imageData
             });
           }
-        }, 'image/jpeg', 0.35);
+        }
+        isSending = false;
       } catch (e) {
         isSending = false;
         console.warn('Socket screen frame emit error:', e);
       }
-    }, 1200);
+    }, 150); // ~6.7 FPS — doubled from previous 3.3 FPS
 
     return () => clearInterval(screenFrameInterval);
   }, [isSharing, stream, examId, candidateId]);
@@ -347,7 +440,8 @@ const ProctorScreenShare = forwardRef(({
   useImperativeHandle(ref, () => ({
     startScreenShare,
     stopScreenShare,
-    isSharing: () => isSharing && (isEntireScreen || candidateConfirmed)
+    isSharing: () => isSharing && (isEntireScreen || candidateConfirmed),
+    getStream: () => streamRef.current
   }));
 
   return (

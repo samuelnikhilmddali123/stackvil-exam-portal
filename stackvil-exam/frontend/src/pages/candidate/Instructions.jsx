@@ -218,6 +218,11 @@ const Instructions = () => {
                 <ShieldCheck className="h-4.5 w-4.5 text-rose-500 shrink-0 mt-0.5" />
                 <p><strong>Warning Limit:</strong> Exceeding <strong>5 warning notices</strong> results in automatic grading and submission of your answers.</p>
               </div>
+
+              <div className="flex items-start space-x-3">
+                <ShieldCheck className="h-4.5 w-4.5 text-brand-500 shrink-0 mt-0.5" />
+                <p><strong>Independent Round Timers:</strong> Each round has a fixed, independent timer. Round 1 gets exactly 30 minutes, Round 2 gets exactly 30 minutes, and Round 3 gets exactly 2 hours (120 minutes). Remaining time from a round is completely lost and never carried over.</p>
+              </div>
             </div>
           </div>
 

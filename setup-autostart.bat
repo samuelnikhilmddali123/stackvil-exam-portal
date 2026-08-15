@@ -7,7 +7,7 @@ echo   Stackvil Portal - Windows AutoStart Setup
 echo ========================================================
 echo.
 echo This utility configures your backend server and Cloudflare
-echo Named Tunnel to start automatically whenever your PC boots up.
+echo Tunnel to start automatically whenever your PC boots up.
 echo.
 echo Target Files:
 echo  - Script: %~dp0auto-start-server.bat
@@ -37,9 +37,15 @@ goto invalid_choice
 
 :enable_autostart
 echo.
-echo Installing AutoStart shortcut...
+echo Configuring and Installing AutoStart shortcut...
+
+echo Set WshShell = CreateObject^("WScript.Shell"^)> "%~dp0Stackvil-Portal-AutoStart.vbs"
+echo WshShell.Run """%~dp0auto-start-server.bat""", 0, False>> "%~dp0Stackvil-Portal-AutoStart.vbs"
+
 copy /y "%~dp0Stackvil-Portal-AutoStart.vbs" "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\Stackvil-Portal-AutoStart.vbs" >nul
-echo [SUCCESS] AutoStart enabled! Server and Tunnel will now start automatically whenever your PC turns on.
+echo.
+echo [SUCCESS] AutoStart enabled!
+echo Backend Server & Cloudflare Tunnel will start automatically whenever your PC turns on.
 echo.
 pause
 goto exit_mgr
@@ -57,8 +63,11 @@ goto exit_mgr
 
 :test_autostart
 echo.
-echo Launching auto-start test...
+echo Launching AutoStart test run...
 call "%~dp0auto-start-server.bat"
+echo [SUCCESS] AutoStart background processes launched!
+echo.
+pause
 goto exit_mgr
 
 :invalid_choice

@@ -13,10 +13,12 @@ import {
   Camera,
   X,
   TrendingUp,
-  UserCheck
+  UserCheck,
+  FolderDown
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Bar } from 'react-chartjs-2';
+import JSZip from 'jszip';
 import LoadingSkeleton from '../../components/LoadingSkeleton';
 
 const Reports = () => {
@@ -135,6 +137,42 @@ const Reports = () => {
       toast.success('PDF Certificate downloaded.');
     } catch (err) {
       toast.error('Failed to compile PDF report.');
+    }
+  };
+
+  const handleDownloadRound3Zip = async (resItem) => {
+    const files = resItem.round3?.files;
+    const fileEntries = files instanceof Map ? Object.fromEntries(files) : (files || {});
+    const fileKeys = Object.keys(fileEntries);
+
+    if (!fileKeys || fileKeys.length === 0) {
+      toast.error('No Round 3 project files available for this candidate.');
+      return;
+    }
+
+    try {
+      const zip = new JSZip();
+      const candName = (resItem.candidate?.name || 'Candidate').replace(/\s+/g, '_');
+      const rootFolder = zip.folder(`${candName}_Round3_Submission`);
+
+      for (const [filePath, content] of Object.entries(fileEntries)) {
+        rootFolder.file(filePath, content || '');
+      }
+
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const url = window.URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${candName}_Round3_Submission.zip`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      toast.success(`Downloaded Round 3 project zip for ${resItem.candidate?.name}!`);
+    } catch (err) {
+      console.error('Project zip export error:', err);
+      toast.error('Failed to generate project zip file.');
     }
   };
 
@@ -337,6 +375,16 @@ const Reports = () => {
                             >
                               <FileText className="h-4.5 w-4.5" />
                             </button>
+                            {/* Download Round 3 Submitted Project ZIP button */}
+                            {res.round3?.files && (res.round3.files instanceof Map ? res.round3.files.size > 0 : Object.keys(res.round3.files || {}).length > 0) && (
+                              <button
+                                onClick={() => handleDownloadRound3Zip(res)}
+                                className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950/30 rounded-lg transition"
+                                title="Download Round 3 Project ZIP"
+                              >
+                                <FolderDown className="h-4.5 w-4.5" />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>

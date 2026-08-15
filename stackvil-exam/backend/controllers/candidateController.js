@@ -159,11 +159,11 @@ const submitExam = async (req, res, next) => {
     // Loop through exam questions to grade them
     for (const question of exam.questions) {
       totalMarks += question.marks;
-      
+
       const candidateResp = responses.find(
         (r) => r.questionId.toString() === question._id.toString()
       );
-      
+
       const candidateAns = candidateResp ? candidateResp.answer : null;
       const timeSpentOnQ = candidateResp ? candidateResp.timeSpent : 0;
 
@@ -205,7 +205,7 @@ const submitExam = async (req, res, next) => {
                   funcName = templateMatch[1];
                 }
               }
-              
+
               // Run test cases in a simple sandbox
               for (const testCase of jsTemplate.testCases) {
                 // Construct standard dynamic JS function run
@@ -215,7 +215,7 @@ const submitExam = async (req, res, next) => {
                 `;
                 const runFunc = new Function(runnerCode);
                 const result = runFunc();
-                
+
                 if (String(result).trim() !== String(testCase.output).trim()) {
                   passed = false;
                   break;
@@ -518,19 +518,41 @@ const getRound1 = async (req, res, next) => {
       return res.status(403).json({ success: false, message: 'You are not assigned to this exam' });
     }
 
+    // Find or create result
+    let result = await Result.findOne({ candidate: userId, exam: examId });
+    if (!result) {
+      result = new Result({
+        candidate: userId,
+        exam: examId,
+        round1: { startTime: new Date() }
+      });
+      await result.save();
+    } else if (!result.round1) {
+      result.round1 = { startTime: new Date() };
+      await result.save();
+    }
+
     // Check if Round 1 is already completed
-    const existingResult = await Result.findOne({ candidate: userId, exam: examId });
-    if (existingResult && existingResult.round1 && existingResult.round1.completed) {
+    if (result.round1 && result.round1.completed) {
       return res.status(400).json({ success: false, message: 'You have already completed Round 1' });
     }
 
+    // Initialize startTime if not set
+    if (!result.round1.startTime) {
+      result.round1.startTime = new Date();
+      await result.save();
+    }
+
     const { round1 } = splitExamQuestions(exam.questions);
+    const elapsedSeconds = Math.floor((Date.now() - new Date(result.round1.startTime).getTime()) / 1000);
+    const timeLeft = Math.max(0, 30 * 60 - elapsedSeconds);
 
     res.status(200).json({
       success: true,
       examTitle: exam.title,
       roundName: 'Aptitude Assessment',
       duration: 30, // 30 Minutes
+      timeLeft, // Remaining seconds
       questions: round1
     });
   } catch (error) {
@@ -558,6 +580,19 @@ const submitRound1 = async (req, res, next) => {
     let result = await Result.findOne({ candidate: userId, exam: examId });
     if (result && result.round1 && result.round1.completed) {
       return res.status(400).json({ success: false, message: 'Round 1 already submitted' });
+    }
+
+    // Server-side timing validation
+    if (result && result.round1 && result.round1.startTime) {
+      const startTime = new Date(result.round1.startTime).getTime();
+      const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+      const maxAllowed = 30 * 60 + 45; // 30 minutes + 45s grace period
+      if (elapsedSeconds > maxAllowed) {
+        return res.status(403).json({
+          success: false,
+          message: `Submission rejected: Round 1 time limit exceeded by ${elapsedSeconds - 30 * 60} seconds.`
+        });
+      }
     }
 
     const { round1 } = splitExamQuestions(exam.questions);
@@ -596,6 +631,7 @@ const submitRound1 = async (req, res, next) => {
     }
 
     result.round1 = {
+      startTime: (result.round1 && result.round1.startTime) || new Date(),
       responses: gradedResponses,
       score: round1Score,
       percentage: round1Percentage,
@@ -656,6 +692,12 @@ const getRound2 = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'You have already completed Round 2' });
     }
 
+    // Initialize round 2 startTime if not set
+    if (!result.round2 || !result.round2.startTime) {
+      result.round2 = { ...result.round2, startTime: new Date() };
+      await result.save();
+    }
+
     const exam = await Exam.findById(examId).populate({
       path: 'questions',
       select: '-correctAnswer -codeTemplates.testCases',
@@ -666,12 +708,15 @@ const getRound2 = async (req, res, next) => {
     }
 
     const { round2 } = splitExamQuestions(exam.questions);
+    const elapsedSeconds = Math.floor((Date.now() - new Date(result.round2.startTime).getTime()) / 1000);
+    const timeLeft = Math.max(0, 30 * 60 - elapsedSeconds);
 
     res.status(200).json({
       success: true,
       examTitle: exam.title,
       roundName: 'Technical Assessment',
-      duration: 45, // 45 Minutes
+      duration: 30, // 30 Minutes
+      timeLeft, // Remaining seconds
       questions: round2
     });
   } catch (error) {
@@ -697,6 +742,19 @@ const submitRound2 = async (req, res, next) => {
 
     if (result.round2 && result.round2.completed) {
       return res.status(400).json({ success: false, message: 'Round 2 already submitted' });
+    }
+
+    // Server-side timing validation
+    if (result && result.round2 && result.round2.startTime) {
+      const startTime = new Date(result.round2.startTime).getTime();
+      const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+      const maxAllowed = 30 * 60 + 45; // 30 minutes + 45s grace period
+      if (elapsedSeconds > maxAllowed) {
+        return res.status(403).json({
+          success: false,
+          message: `Submission rejected: Round 2 time limit exceeded by ${elapsedSeconds - 30 * 60} seconds.`
+        });
+      }
     }
 
     const exam = await Exam.findById(examId).populate('questions');
@@ -733,6 +791,7 @@ const submitRound2 = async (req, res, next) => {
     const round2Status = round2Percentage >= exam.passingScore ? 'Pass' : 'Fail';
 
     result.round2 = {
+      startTime: (result.round2 && result.round2.startTime) || new Date(),
       responses: gradedResponses,
       score: round2Score,
       percentage: round2Percentage,
@@ -865,6 +924,16 @@ const getRound3 = async (req, res, next) => {
         round1: { completed: true },
         round2: { completed: true }
       });
+    }
+
+    if (!result.round3 || !result.round3.startTime) {
+      if (!result.round3) {
+        result.round3 = { startTime: new Date() };
+      } else {
+        result.round3.startTime = new Date();
+      }
+      result.markModified('round3');
+      await result.save();
     }
 
     if (result.round3 && result.round3.completed) {
@@ -1274,8 +1343,8 @@ module.exports = {
 
     // If workspace is not initialized, set initial project files
     const hasFiles = result.round3 && result.round3.files && (
-      result.round3.files instanceof Map 
-        ? result.round3.files.size > 0 
+      result.round3.files instanceof Map
+        ? result.round3.files.size > 0
         : Object.keys(result.round3.files || {}).length > 0
     );
 
@@ -1292,11 +1361,15 @@ module.exports = {
       await result.save();
     }
 
+    const elapsedSeconds = Math.floor((Date.now() - new Date(result.round3.startTime).getTime()) / 1000);
+    const timeLeft = Math.max(0, 120 * 60 - elapsedSeconds);
+
     res.status(200).json({
       success: true,
       examTitle: (result.exam && result.exam.title) || (exam && exam.title) || 'Coding Assessment',
       roundName: 'Coding Assessment',
-      duration: 60, // 60 Minutes
+      duration: 120, // 120 Minutes
+      timeLeft, // Remaining seconds
       files: result.round3.files
     });
   } catch (error) {
@@ -1331,6 +1404,8 @@ const saveRound3Edits = async (req, res, next) => {
       result.round3.totalTimeTaken = totalTimeTaken;
     }
 
+    result.markModified('round3');
+    result.markModified('round3.files');
     await result.save();
 
     res.status(200).json({
@@ -1362,6 +1437,19 @@ const submitRound3 = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Round 3 already submitted.' });
     }
 
+    // Server-side timing validation
+    if (result && result.round3 && result.round3.startTime) {
+      const startTime = new Date(result.round3.startTime).getTime();
+      const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+      const maxAllowed = 120 * 60 + 45; // 120 minutes + 45s grace period
+      if (elapsedSeconds > maxAllowed) {
+        return res.status(403).json({
+          success: false,
+          message: `Submission rejected: Round 3 time limit exceeded by ${elapsedSeconds - 120 * 60} seconds.`
+        });
+      }
+    }
+
     const exam = await Exam.findById(examId);
     if (!exam) {
       return res.status(404).json({ success: false, message: 'Exam not found' });
@@ -1390,7 +1478,7 @@ const submitRound3 = async (req, res, next) => {
     // 2. Database Connection Pool check (25 marks)
     const dbCode = activeFiles['backend/db.js'] || '';
     const hasCreatePool = dbCode.includes('createPool') || dbCode.includes('createConnection');
-    const exportsPool = dbCode.includes('module.exports = pool') || dbCode.includes('module.exports =') ;
+    const exportsPool = dbCode.includes('module.exports = pool') || dbCode.includes('module.exports =');
     if (hasCreatePool && exportsPool) {
       score += 25;
       details.db = 25;
@@ -1407,7 +1495,7 @@ const submitRound3 = async (req, res, next) => {
     const hasInsert = ctrlCode.toLowerCase().includes('createemployee') || ctrlCode.toLowerCase().includes('insert');
     const hasUpdate = ctrlCode.toLowerCase().includes('updateemployee') || ctrlCode.toLowerCase().includes('update');
     const hasDelete = ctrlCode.toLowerCase().includes('deleteemployee') || ctrlCode.toLowerCase().includes('delete');
-    
+
     let ctrlScore = 0;
     if (hasGet) ctrlScore += 7;
     if (hasInsert) ctrlScore += 6;
@@ -1431,6 +1519,7 @@ const submitRound3 = async (req, res, next) => {
     }
 
     result.round3 = {
+      startTime: (result.round3 && result.round3.startTime) || new Date(),
       files: activeFiles,
       score,
       percentage: score,
@@ -1473,6 +1562,8 @@ const submitRound3 = async (req, res, next) => {
     result.status = result.percentage >= exam.passingScore ? 'Pass' : 'Fail';
     result.submittedAt = new Date();
 
+    result.markModified('round3');
+    result.markModified('round3.files');
     await result.save();
 
     // Send final Result confirmation email
@@ -1513,6 +1604,74 @@ const submitRound3 = async (req, res, next) => {
   }
 };
 
+/**
+ * @desc    Get Candidate Active Session details (round & time left) for global timer persistence
+ * @route   GET /api/candidate/exams/:id/active-session
+ * @access  Private (Candidate)
+ */
+const getActiveSession = async (req, res, next) => {
+  try {
+    const examId = req.params.id;
+    const userId = req.user.id;
+
+    const exam = await Exam.findById(examId);
+    if (!exam) {
+      return res.status(404).json({ success: false, message: 'Exam not found' });
+    }
+
+    const result = await Result.findOne({ candidate: userId, exam: examId });
+    
+    let activeRound = 1;
+    let completed = false;
+    let timeLeft = 30 * 60; // Default Round 1 is 30 minutes
+    let roundDuration = 30;
+
+    if (result) {
+      if (result.round3 && result.round3.completed) {
+        completed = true;
+        activeRound = 3;
+        timeLeft = 0;
+        roundDuration = 120;
+      } else if (result.round2 && result.round2.completed) {
+        activeRound = 3;
+        roundDuration = 120;
+        const startTime = result.round3 && result.round3.startTime
+          ? new Date(result.round3.startTime).getTime()
+          : Date.now();
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        timeLeft = Math.max(0, 120 * 60 - elapsed);
+      } else if (result.round1 && result.round1.completed) {
+        activeRound = 2;
+        roundDuration = 30;
+        const startTime = result.round2 && result.round2.startTime
+          ? new Date(result.round2.startTime).getTime()
+          : Date.now();
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        timeLeft = Math.max(0, 30 * 60 - elapsed);
+      } else {
+        activeRound = 1;
+        roundDuration = 30;
+        const startTime = result.round1 && result.round1.startTime
+          ? new Date(result.round1.startTime).getTime()
+          : Date.now();
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        timeLeft = Math.max(0, 30 * 60 - elapsed);
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      activeRound,
+      completed,
+      timeLeft,
+      examTitle: exam.title,
+      duration: roundDuration
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getAssignedExams,
   startExam,
@@ -1527,4 +1686,5 @@ module.exports = {
   saveRound3Edits,
   submitRound3,
   getFinalResult,
+  getActiveSession,
 };

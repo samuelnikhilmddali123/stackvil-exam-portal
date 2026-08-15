@@ -25,6 +25,9 @@ const responseSchema = new mongoose.Schema({
 
 const roundSchema = new mongoose.Schema({
   responses: [responseSchema],
+  startTime: {
+    type: Date,
+  },
   score: {
     type: Number,
     default: 0,
@@ -117,6 +120,7 @@ const resultSchema = new mongoose.Schema(
           type: mongoose.Schema.Types.Mixed,
           default: {}
         },
+        startTime: Date,
         completed: {
           type: Boolean,
           default: false

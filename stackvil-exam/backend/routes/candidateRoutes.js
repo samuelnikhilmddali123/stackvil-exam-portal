@@ -13,6 +13,7 @@ const {
   saveRound3Edits,
   submitRound3,
   getFinalResult,
+  getActiveSession,
 } = require('../controllers/candidateController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 
@@ -57,6 +58,7 @@ router.post('/exams/:id/submit', submitExam);
 router.post('/exams/:id/run-code', runCodingTest);
 
 // Round based routes
+router.get('/exams/:id/active-session', getActiveSession);
 router.get('/exams/:id/round/1', getRound1);
 router.post('/exams/:id/round/1/submit', submitRound1);
 router.get('/exams/:id/round/2', getRound2);

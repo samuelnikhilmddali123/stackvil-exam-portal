@@ -10,8 +10,9 @@
     "seed": "cd stackvil-exam/backend && node seed.js",
     "backend": "cd stackvil-exam/backend && npm run dev",
     "frontend": "cd stackvil-exam/frontend && npm run dev",
-    "tunnel": "where cloudflared >nul 2>nul && cloudflared tunnel --url http://localhost:5173 || \"C:\\Program Files (x86)\\cloudflared\\cloudflared.exe\" tunnel --url http://localhost:5173",
+    "tunnel": "node start-frontend-tunnel.js",
     "tunnel:backend": "node start-tunnel.js",
+    "tunnel:frontend": "node start-frontend-tunnel.js",
     "tunnel:auto": "node start-tunnel.js"
   }
 }

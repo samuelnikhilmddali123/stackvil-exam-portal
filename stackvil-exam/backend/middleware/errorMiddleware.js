@@ -7,6 +7,7 @@ const notFound = (req, res, next) => {
 
 // Global error handler
 const errorHandler = (err, req, res, next) => {
+  console.error('Unhandled Server Error:', err);
   let statusCode = res.statusCode === 200 ? 500 : res.statusCode;
   let message = err.message;
 
@@ -29,6 +30,12 @@ const errorHandler = (err, req, res, next) => {
     message = Object.values(err.errors)
       .map((val) => val.message)
       .join(', ');
+  }
+
+  const origin = req.headers.origin;
+  if (origin) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
   }
 
   res.status(statusCode).json({

@@ -1,0 +1,9 @@
+tunnel: c50b4b44-6a4a-4cea-b11c-05f9f1a80942
+credentials-file: C:\Users\DELL\.cloudflared\c50b4b44-6a4a-4cea-b11c-05f9f1a80942.json
+
+ingress:
+  - hostname: entrance.stackvil.com
+    service: http://localhost:5173
+  - hostname: api.stackvil.com
+    service: http://localhost:5000
+  - service: http_status:404

@@ -218,7 +218,7 @@ const ResultDetails = () => {
           <Layers className="h-4 w-4" />
           <span>Round 2: Technical</span>
         </button>
-        {result?.round3?.completed && (
+        {(result?.round3?.completed || (result?.round3?.files && (result.round3.files instanceof Map ? result.round3.files.size > 0 : Object.keys(result.round3.files || {}).length > 0))) && (
           <button
             onClick={() => { setActiveRound('round3'); }}
             className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-2 ${

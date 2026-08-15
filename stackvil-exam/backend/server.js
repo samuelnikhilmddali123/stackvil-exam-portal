@@ -23,16 +23,85 @@ connectDB();
 
 const app = express();
 
-// Security Headers
+// Trust proxy headers for reverse proxies & Cloudflare tunnels
+app.set('trust proxy', 1);
+
+// Set explicit Permissions-Policy for camera, microphone, and display-capture
+app.use((req, res, next) => {
+  res.setHeader('Permissions-Policy', 'camera=*, microphone=*, display-capture=*');
+  next();
+});
+
+
+// Security Headers with updated Content Security Policy for Cloudflare Insights, Monaco Editor & WebRTC/Fonts
 app.use(
   helmet({
-    crossOriginResourcePolicy: false, // Allows loading images uploaded in dynamic requests
+    crossOriginResourcePolicy: false,
+    crossOriginEmbedderPolicy: false,
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: [
+          "'self'",
+          "'unsafe-inline'",
+          "'unsafe-eval'",
+          "blob:",
+          "https://static.cloudflareinsights.com",
+          "https://cdn.jsdelivr.net"
+        ],
+        scriptSrcElem: [
+          "'self'",
+          "'unsafe-inline'",
+          "https://static.cloudflareinsights.com",
+          "https://cdn.jsdelivr.net"
+        ],
+        styleSrc: [
+          "'self'",
+          "'unsafe-inline'",
+          "https://fonts.googleapis.com",
+          "https://cdn.jsdelivr.net"
+        ],
+        styleSrcElem: [
+          "'self'",
+          "'unsafe-inline'",
+          "https://fonts.googleapis.com",
+          "https://cdn.jsdelivr.net"
+        ],
+        workerSrc: [
+          "'self'",
+          "blob:"
+        ],
+        fontSrc: [
+          "'self'",
+          "https://fonts.gstatic.com",
+          "data:"
+        ],
+        imgSrc: [
+          "'self'",
+          "data:",
+          "blob:",
+          "https:"
+        ],
+        connectSrc: [
+          "'self'",
+          "https:",
+          "wss:",
+          "ws:"
+        ],
+        mediaSrc: [
+          "'self'",
+          "blob:",
+          "data:"
+        ]
+      }
+    }
   })
 );
 
 // Enable CORS
 const allowedOrigins = [
   'https://entrance.stackvil.com',
+  'http://entrance.stackvil.com',
   'https://stackvil-exam-portal.vercel.app',
   'http://localhost:5173',
   'http://localhost:5174',
@@ -42,25 +111,49 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps or curl requests)
+    // Allow requests with no origin (like mobile apps, curl, or server-to-server)
     if (!origin) return callback(null, true);
     
-    const isLocalhost = origin.includes('localhost') || origin.includes('127.0.0.1');
-    
-    if (allowedOrigins.indexOf(origin) !== -1 || isLocalhost) {
+    const normalized = origin.trim().replace(/\/$/, '');
+    const isLocalhost = normalized.includes('localhost') || normalized.includes('127.0.0.1');
+    const isStackvilDomain = normalized.endsWith('stackvil.com') || normalized === 'https://stackvil.com';
+    const isVercelDomain = normalized.endsWith('.vercel.app');
+    const isCloudflareTunnel = normalized.endsWith('.trycloudflare.com');
+    const isExplicitAllowed = allowedOrigins.some((o) => o.replace(/\/$/, '') === normalized);
+
+    if (isExplicitAllowed || isLocalhost || isStackvilDomain || isVercelDomain || isCloudflareTunnel) {
       return callback(null, true);
     }
     
-    return callback(null, false);
+    return callback(null, true);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  allowedHeaders: ['*'],
   optionsSuccessStatus: 200,
 };
 
+// Global CORS response header fallback middleware
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+  } else {
+    res.header('Access-Control-Allow-Origin', '*');
+  }
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Access-Control-Allow-Origin');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  next();
+});
+
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
+
 
 // Body Parsers
 app.use(express.json({ limit: '15mb' })); // Support larger webcam frame payloads
@@ -71,6 +164,13 @@ app.use('/api', apiLimiter);
 
 // Expose uploaded directories statically
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Serve compiled frontend static bundle if available
+const fs = require('fs');
+const frontendDist = path.join(__dirname, '../frontend/dist');
+if (fs.existsSync(frontendDist)) {
+  app.use(express.static(frontendDist));
+}
 
 // Swagger Documentation Route
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpecs));
@@ -83,8 +183,29 @@ app.use('/api/candidate', candidateRoutes);
 app.use('/api/proctor', proctorRoutes);
 app.use('/api/reports', reportRoutes);
 
-// Base route
-app.get('/', (req, res) => {
+app.get('/api/diag/sockets', (req, res) => {
+  const io = req.app.get('io');
+  if (!io) return res.json({ error: 'io not initialized' });
+  const sockets = [];
+  for (const [id, s] of io.sockets.sockets) {
+    sockets.push({
+      id: s.id,
+      candidateId: s.candidateId,
+      examId: s.examId,
+      rooms: Array.from(s.rooms)
+    });
+  }
+  res.json(sockets);
+});
+
+// Base route fallback for Single Page Application frontend routing
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api') || req.path.startsWith('/uploads') || req.path.startsWith('/socket.io')) {
+    return next();
+  }
+  if (fs.existsSync(path.join(frontendDist, 'index.html'))) {
+    return res.sendFile(path.join(frontendDist, 'index.html'));
+  }
   res.status(200).json({
     message: 'Welcome to Stackvil Online Examination Portal Backend API',
     docs: '/api-docs',
@@ -104,10 +225,8 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin) || origin.includes('localhost') || origin.includes('127.0.0.1') || origin.includes('stackvil') || origin.includes('vercel.app')) {
-        return callback(null, true);
-      }
-      return callback(null, true);
+      // Return requesting origin to ensure CORS Access-Control-Allow-Origin with credentials works across Cloudflare domains
+      return callback(null, origin || '*');
     },
     methods: ['GET', 'POST'],
     credentials: true,
@@ -253,11 +372,21 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     if (socket.candidateId && socket.examId) {
-      io.to('admin-proctor-room').emit('candidate-offline', {
-        candidateId: socket.candidateId,
-        examId: socket.examId,
-        socketId: socket.id
-      });
+      // Check if there is another active socket connection for the same candidate taking the same exam
+      let candidateStillConnected = false;
+      for (const [id, s] of io.sockets.sockets) {
+        if (s.id !== socket.id && s.candidateId === socket.candidateId && s.examId === socket.examId) {
+          candidateStillConnected = true;
+          break;
+        }
+      }
+      if (!candidateStillConnected) {
+        io.to('admin-proctor-room').emit('candidate-offline', {
+          candidateId: socket.candidateId,
+          examId: socket.examId,
+          socketId: socket.id
+        });
+      }
     }
   });
 });

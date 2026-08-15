@@ -10,11 +10,13 @@ import {
   FileArchive, 
   Folder, 
   Play, 
-  ExternalLink,
-  ShieldCheck,
-  Send,
-  FileCode,
-  CheckSquare
+  ExternalLink, 
+  ShieldCheck, 
+  Send, 
+  FileCode, 
+  CheckSquare, 
+  Monitor, 
+  Camera
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ProctorScreenShare from '../ProctorScreenShare';
@@ -27,13 +29,33 @@ const Round3VSCodeView = ({
   isSubmitting = false,
   onSubmitProject,
   proctorComponent,
-  examId
+  examId,
+  persistedStreamRef,
+  onScreenShareStateChange,
+  onStartCamera
 }) => {
   // Checklist states for starting coding round timer
-  const [cameraActive, setCameraActive] = useState(true); // From ProctorCamera
-  const [screenShareActive, setScreenShareActive] = useState(false);
+  const [cameraActive, setCameraActive] = useState(false); // From ProctorCamera
+  const [screenShareActive, setScreenShareActive] = useState(
+    Boolean(persistedStreamRef?.current && persistedStreamRef.current.active)
+  );
+
+  useEffect(() => {
+    if (onScreenShareStateChange) {
+      onScreenShareStateChange(screenShareActive);
+    }
+  }, [screenShareActive, onScreenShareStateChange]);
   const [projectOpened, setProjectOpened] = useState(false);
   const [downloadedZip, setDownloadedZip] = useState(false);
+
+  useEffect(() => {
+    window.setRound3CameraActive = (isActive) => {
+      setCameraActive(Boolean(isActive));
+    };
+    return () => {
+      delete window.setRound3CameraActive;
+    };
+  }, []);
 
   // Submission state (dual folder & zip upload)
   const [submittedFiles, setSubmittedFiles] = useState({});
@@ -165,9 +187,13 @@ const Round3VSCodeView = ({
   };
 
   const formatTime = (secs) => {
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    const hours = Math.floor(secs / 3600);
+    const mins = Math.floor((secs % 3600) / 60);
+    const remainingSecs = secs % 60;
+    if (hours > 0) {
+      return `${hours}:${mins.toString().padStart(2, '0')}:${remainingSecs.toString().padStart(2, '0')}`;
+    }
+    return `${mins.toString().padStart(2, '0')}:${remainingSecs.toString().padStart(2, '0')}`;
   };
 
   return (
@@ -187,13 +213,10 @@ const Round3VSCodeView = ({
 
         {/* Live Coding Timer Badge */}
         <div className="flex items-center space-x-4">
-          <div className={`flex items-center space-x-2 px-4 py-2 rounded-xl border font-mono text-sm font-bold transition ${
-            allConditionsMet 
-              ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 animate-pulse' 
-              : 'bg-slate-800/80 border-slate-700 text-slate-400'
-          }`}>
+          <div className="flex items-center space-x-2.5 px-3.5 py-2 rounded-xl border font-mono text-sm font-bold bg-brand-500/10 border-brand-500/30 text-brand-400 animate-pulse">
             <Clock className="h-4 w-4" />
-            <span>{allConditionsMet ? formatTime(timeLeftSeconds) : 'Timer Paused'}</span>
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">ROUND 3 TIME REMAINING:</span>
+            <span>{formatTime(timeLeftSeconds)}</span>
           </div>
 
           <button
@@ -217,11 +240,11 @@ const Round3VSCodeView = ({
           {!allConditionsMet ? (
             <div className="p-5 bg-amber-950/40 border border-amber-500/40 rounded-2xl space-y-2">
               <div className="flex items-center space-x-2 text-amber-400 font-bold text-sm">
-                <AlertCircle className="h-5 w-5 shrink-0" />
-                <span>Coding Timer is Paused</span>
+                <AlertCircle className="h-5 w-5 shrink-0 animate-bounce" />
+                <span>Verification Checklist Pending</span>
               </div>
               <p className="text-xs text-amber-200/90 leading-relaxed">
-                The official 60-minute coding timer will start <strong>only after</strong> all setup requirements are completed below.
+                Please complete the checklist below (Webcam, Screen Share, and project confirmation) to proceed with your workspace coding.
               </p>
             </div>
           ) : (
@@ -234,7 +257,7 @@ const Round3VSCodeView = ({
                 </div>
               </div>
               <span className="px-3 py-1 bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-bold rounded-full">
-                Timer Running
+                Active
               </span>
             </div>
           )}
@@ -248,11 +271,11 @@ const Round3VSCodeView = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div className="p-3 bg-slate-950 border border-slate-800 rounded-2xl space-y-1">
                 <div className="font-bold text-brand-400">Step 1: Camera Setup</div>
-                <p className="text-slate-400 text-[11px]">Keep your webcam stream ON throughout the entire coding round.</p>
+                <p className="text-slate-400 text-[11px]">Continue — your webcam is already active from the previous round. Keep it ON throughout this coding session.</p>
               </div>
               <div className="p-3 bg-slate-950 border border-slate-800 rounded-2xl space-y-1">
                 <div className="font-bold text-brand-400">Step 2: Share Entire Screen</div>
-                <p className="text-slate-400 text-[11px]">Click "Share Entire Screen". Select <strong>Entire Screen</strong> (single tabs/windows prohibited).</p>
+                <p className="text-slate-400 text-[11px]">Continue — your screen share is already active. Ensure <strong>Entire Screen</strong> remains shared (single tabs/windows prohibited).</p>
               </div>
               <div className="p-3 bg-slate-950 border border-slate-800 rounded-2xl space-y-1">
                 <div className="font-bold text-brand-400">Step 3: Download ZIP Archive</div>
@@ -303,7 +326,15 @@ const Round3VSCodeView = ({
                     <span>Camera ON</span>
                   </span>
                 ) : (
-                  <span className="text-xs font-bold text-rose-400">Camera Disconnected</span>
+                  <button
+                    onClick={() => {
+                      if (onStartCamera) onStartCamera();
+                    }}
+                    className="px-3.5 py-1.5 bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold rounded-xl shadow transition flex items-center space-x-1.5 cursor-pointer animate-pulse"
+                  >
+                    <Camera className="h-3.5 w-3.5 text-white" />
+                    <span>Start Camera Now</span>
+                  </button>
                 )}
               </div>
 
@@ -328,7 +359,17 @@ const Round3VSCodeView = ({
                     <span>Entire Screen Active</span>
                   </span>
                 ) : (
-                  <span className="text-xs font-bold text-slate-500">Pending Share</span>
+                  <button
+                    onClick={() => {
+                      if (screenShareRef.current && screenShareRef.current.startScreenShare) {
+                        screenShareRef.current.startScreenShare();
+                      }
+                    }}
+                    className="px-3.5 py-1.5 bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold rounded-xl shadow transition flex items-center space-x-1.5 cursor-pointer animate-pulse"
+                  >
+                    <Monitor className="h-3.5 w-3.5" />
+                    <span>Share Entire Screen Now</span>
+                  </button>
                 )}
               </div>
 
@@ -527,6 +568,7 @@ const Round3VSCodeView = ({
           <ProctorScreenShare
             ref={screenShareRef}
             examId={examId}
+            persistedStreamRef={persistedStreamRef}
             onScreenShareStateChange={(sharing, isEntire) => {
               setScreenShareActive(sharing && isEntire);
             }}

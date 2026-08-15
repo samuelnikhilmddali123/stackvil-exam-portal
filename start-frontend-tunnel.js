@@ -2,14 +2,13 @@ const { spawn, execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-const targetLocalPort = 5000;
-const permanentBackendUrl = 'https://api.stackvil.com';
-const tunnelName = 'stackvil-backend';
+const targetLocalPort = 5173;
+const permanentFrontendUrl = 'https://entrance.stackvil.com';
+const tunnelName = 'stackvil-frontend';
 
 console.log('=======================================================');
-console.log('   Starting Stackvil Cloudflare Tunnel Manager');
-console.log(`   Named Tunnel    : ${tunnelName} (${permanentBackendUrl})`);
-console.log(`   Local Backend   : http://127.0.0.1:${targetLocalPort}`);
+console.log('   Starting Stackvil Frontend Cloudflare Tunnel');
+console.log(`   Target Local Frontend : http://127.0.0.1:${targetLocalPort}`);
 console.log('=======================================================\n');
 
 // 1. Locate cloudflared binary
@@ -53,7 +52,7 @@ if (!cloudflaredCmd) {
 console.log(`[INFO] Cloudflare binary located at: ${cloudflaredCmd}`);
 
 function startQuickTunnel() {
-  console.log(`\n[INFO] Launching Cloudflare Quick Tunnel for local backend (http://127.0.0.1:${targetLocalPort})...`);
+  console.log(`\n[INFO] Launching Cloudflare Quick Tunnel for Frontend (http://127.0.0.1:${targetLocalPort})...`);
   const quickTunnelProcess = spawn(cloudflaredCmd, ['tunnel', '--url', `http://127.0.0.1:${targetLocalPort}`], {
     windowsHide: true
   });
@@ -78,15 +77,10 @@ function startQuickTunnel() {
 }
 
 function startNamedTunnel() {
-  console.log(`[INFO] Attempting Tunnel with Multi-Domain config (entrance.stackvil.com & api.stackvil.com)...`);
+  console.log(`[INFO] Attempting Named Tunnel '${tunnelName}'...`);
   let hasFailed = false;
-
-  const configPath = path.join(__dirname, 'tunnel-config.yml');
-  const tunnelArgs = fs.existsSync(configPath)
-    ? ['tunnel', '--config', configPath, 'run']
-    : ['tunnel', 'run', tunnelName];
   
-  const namedProcess = spawn(cloudflaredCmd, tunnelArgs, {
+  const namedProcess = spawn(cloudflaredCmd, ['tunnel', 'run', tunnelName], {
     windowsHide: true
   });
 
@@ -110,7 +104,7 @@ function startNamedTunnel() {
 
   namedProcess.on('exit', (code) => {
     if (code !== 0 || hasFailed) {
-      console.log(`\n[NOTICE] Named tunnel '${tunnelName}' credentials/certificate not installed on this system.`);
+      console.log(`\n[NOTICE] Named tunnel '${tunnelName}' credentials not found, starting Quick Tunnel...`);
       startQuickTunnel();
     } else {
       console.log(`\nNamed Tunnel process exited with code ${code}`);

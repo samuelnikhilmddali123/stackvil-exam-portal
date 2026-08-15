@@ -26,32 +26,32 @@ goto invalid_choice
 
 :start_all
 echo.
-echo Starting Backend Server...
-start "Stackvil Backend" cmd /c "npm run backend"
-timeout /t 3 >nul
+echo Checking and preparing Frontend build...
+if not exist "%~dp0stackvil-exam\frontend\dist\index.html" (
+    echo Building production frontend...
+    cd /d "%~dp0stackvil-exam\frontend"
+    call npm run build
+    cd /d "%~dp0"
+)
 
-echo Starting Frontend Server...
-start "Stackvil Frontend" cmd /c "npm run frontend"
-timeout /t 2 >nul
+echo Starting Stackvil Unified Portal Server (Port 5000)...
+start "Stackvil Unified Server" cmd /c "cd /d %~dp0stackvil-exam\backend && node server.js > server.log 2>&1"
+ping 127.0.0.1 -n 5 >nul
 
-echo Starting Permanent Cloudflare Tunnel (https://api.stackvil.com)...
-start "Cloudflare Named Tunnel" cmd /c "npm run tunnel:backend"
+echo Starting Cloudflare Tunnel (https://entrance.stackvil.com ^& https://api.stackvil.com)...
+start "Stackvil Cloudflare Tunnel" cmd /c "cd /d %~dp0 && node start-tunnel.js"
 goto exit_launcher
 
 :start_tunnel
 echo.
-echo Starting Permanent Cloudflare Tunnel (https://api.stackvil.com)...
-start "Cloudflare Named Tunnel" cmd /c "npm run tunnel:backend"
+echo Starting Cloudflare Tunnel (https://entrance.stackvil.com ^& https://api.stackvil.com)...
+start "Stackvil Cloudflare Tunnel" cmd /c "cd /d %~dp0 && node start-tunnel.js"
 goto exit_launcher
 
 :start_servers
 echo.
-echo Starting Backend Server...
-start "Stackvil Backend" cmd /c "npm run backend"
-timeout /t 3 >nul
-
-echo Starting Frontend Server...
-start "Stackvil Frontend" cmd /c "npm run frontend"
+echo Starting Stackvil Unified Portal Server (Port 5000)...
+start "Stackvil Unified Server" cmd /c "cd /d %~dp0stackvil-exam\backend && node server.js > server.log 2>&1"
 goto exit_launcher
 
 :deploy_production

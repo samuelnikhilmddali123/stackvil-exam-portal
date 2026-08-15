@@ -403,11 +403,12 @@ const parsePDFQuestionsForCategory = async (filePath, category) => {
   let text = '';
   if (typeof pdfParse === 'function') {
     const pdfData = await pdfParse(dataBuffer);
-    text = pdfData.text;
-  } else if (pdfParse.PDFParse) {
+    text = pdfData.text || pdfData;
+  } else if (pdfParse && typeof pdfParse.PDFParse === 'function') {
     const parser = new pdfParse.PDFParse(new Uint8Array(dataBuffer));
+    await parser.load();
     const pdfData = await parser.getText();
-    text = pdfData.text;
+    text = typeof pdfData === 'string' ? pdfData : (pdfData && pdfData.text ? pdfData.text : '');
   } else {
     throw new Error('Unsupported pdf-parse module format');
   }
@@ -583,6 +584,7 @@ const createCustomCandidateExam = async (req, res, next) => {
       exam
     });
   } catch (error) {
+    console.error('Error in createCustomCandidateExam:', error);
     next(error);
   }
 };

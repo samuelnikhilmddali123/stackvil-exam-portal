@@ -12,7 +12,7 @@ import { io } from 'socket.io-client';
 import { useAuth } from '../context/AuthContext';
 import { API_BASE_URL } from '../config/api';
 
-const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged }, ref) => {
+const ProctorCamera = forwardRef(({ examId, onPermissionGranted, onPermissionDenied, onWarningLogged, autoStart = true }, ref) => {
   const { user } = useAuth();
   const candidateId = user?._id || user?.id;
   const socketRef = useRef(null);
@@ -22,12 +22,31 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
   const [stream, setStream] = useState(null);
   const streamRef = useRef(null);
   const currentRequestRef = useRef(0);
+  const pendingAdminsRef = useRef(new Set());
   const [permission, setPermission] = useState('pending'); // pending, granted, denied
+  const [denialReason, setDenialReason] = useState('');
   const [isMuted, setIsMuted] = useState(false);
 
   // Initialize Camera & Microphone stream
   useEffect(() => {
-    startMedia();
+    if (autoStart) {
+      startMedia();
+    } else {
+      setPermission('denied');
+      setDenialReason('Camera is paused. Click the checklist button to start proctoring.');
+    }
+
+    // Listen for browser permission changes (e.g. user changing site settings from Block to Allow)
+    if (navigator.permissions && navigator.permissions.query) {
+      navigator.permissions.query({ name: 'camera' }).then((permissionStatus) => {
+        permissionStatus.onchange = () => {
+          if (permissionStatus.state === 'granted') {
+            startMedia();
+          }
+        };
+      }).catch(() => {});
+    }
+
     return () => {
       stopMedia();
     };
@@ -49,15 +68,24 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
         streamRef.current = null;
       }
 
-      // Optimize WebRTC camera constraints: 640x480 at 15-20 FPS
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 640, max: 1280 },
-          height: { ideal: 480, max: 720 },
-          frameRate: { ideal: 15, max: 20 }
-        },
-        audio: false,
-      });
+      // Optimize WebRTC camera constraints with resilient fallback
+      let mediaStream;
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 640, max: 1280 },
+            height: { ideal: 480, max: 720 },
+            frameRate: { ideal: 30, max: 30 }
+          },
+          audio: false,
+        });
+      } catch (constraintErr) {
+        console.warn('Ideal camera constraints failed, attempting fallback { video: true }...', constraintErr);
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false,
+        });
+      }
       
       if (requestId !== currentRequestRef.current) {
         mediaStream.getTracks().forEach(track => track.stop());
@@ -87,6 +115,17 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
       setStream(mediaStream);
       streamRef.current = mediaStream;
       setPermission('granted');
+      if (onPermissionGranted) {
+        onPermissionGranted();
+      }
+
+      // Flush queued admin WebRTC requests once camera stream becomes active
+      if (pendingAdminsRef.current.size > 0) {
+        pendingAdminsRef.current.forEach(adminSocketId => {
+          initiateWebRPeerConnection(adminSocketId);
+        });
+        pendingAdminsRef.current.clear();
+      }
 
       if (socketRef.current) {
         socketRef.current.emit('candidate-webcam-status', {
@@ -94,12 +133,24 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
           candidateId,
           status: 'active'
         });
+        socketRef.current.emit('join-exam-session', { examId, candidateId, streamType: 'camera' });
       }
     } catch (err) {
       if (requestId !== currentRequestRef.current) return;
       console.error('Proctor Media Error:', err);
       setPermission('denied');
-      toast.error('Camera access is mandatory for live proctoring.');
+      
+      let reasonMsg = 'Camera access blocked in browser settings.';
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        reasonMsg = 'Camera permission blocked. Click URL bar lock icon 🔒 -> Camera -> Allow, then reload.';
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        reasonMsg = 'No webcam hardware detected. Please connect a webcam.';
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        reasonMsg = 'Webcam is in use by another app (Zoom/Teams/Discord). Please close other apps.';
+      }
+      setDenialReason(reasonMsg);
+
+      toast.error('Camera access is required for proctoring.', { id: 'proctorCamError' });
       if (onPermissionDenied) {
         onPermissionDenied(err.name === 'NotAllowedError' ? 'Permission Denied' : 'Device Error');
       }
@@ -115,7 +166,7 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
     setStream(null);
   };
 
-  // Socket canvas frame fallback stream (1.25 FPS ~ 800ms) for backup preview only
+  // Socket canvas frame fallback stream (10 FPS ~ 100ms) for ultra-smooth live preview
   useEffect(() => {
     if (permission !== 'granted' || !stream) return;
 
@@ -134,21 +185,20 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
       isSending = true;
       try {
         ctx.drawImage(video, 0, 0, 320, 240);
-        canvas.toBlob((blob) => {
-          isSending = false;
-          if (blob && socketRef.current && socketRef.current.connected) {
-            socketRef.current.emit('candidate-frame', {
-              examId,
-              candidateId,
-              frameBuffer: blob
-            });
-          }
-        }, 'image/jpeg', 0.30);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.25);
+        isSending = false;
+        if (socketRef.current && socketRef.current.connected) {
+          socketRef.current.emit('candidate-frame', {
+            examId,
+            candidateId,
+            imageData: dataUrl
+          });
+        }
       } catch (e) {
         isSending = false;
         console.warn('Socket camera frame emit error:', e);
       }
-    }, 800);
+    }, 100);
 
     return () => clearInterval(frameInterval);
   }, [permission, stream, examId, candidateId]);
@@ -172,7 +222,8 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
   const initiateWebRPeerConnection = async (adminSocketId) => {
     try {
       if (!streamRef.current) {
-        console.warn('Postponing WebRTC connection: camera stream not active yet.');
+        console.warn('Queuing WebRTC connection request: camera stream not active yet.');
+        pendingAdminsRef.current.add(adminSocketId);
         return;
       }
       if (peersRef.current[adminSocketId]) {
@@ -223,11 +274,12 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
           const sender = pc.addTrack(track, streamRef.current);
           if (sender && sender.track && sender.track.kind === 'video') {
             try {
-              const params = sender.getParameters();
-              if (!params.encodings) params.encodings = [{}];
-              params.encodings[0].maxBitrate = 800000; // 800 kbps HD video
-              params.encodings[0].maxFramerate = 30; // 30 FPS video call
-              sender.setParameters(params).catch(e => console.warn('Bitrate param set error:', e));
+              const params = sender.getParameters ? sender.getParameters() : null;
+              if (params && params.encodings && params.encodings.length > 0) {
+                params.encodings[0].maxBitrate = 1200000; // 1.2 Mbps HD video
+                params.encodings[0].maxFramerate = 30; // 30 FPS video call
+                sender.setParameters(params).catch(e => console.warn('Bitrate param set error:', e));
+              }
             } catch (e) {
               console.warn('Bitrate error:', e);
             }
@@ -270,7 +322,9 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
       if (!pc) return;
 
       if (signalData.type === 'answer') {
-        await pc.setRemoteDescription(new RTCSessionDescription(signalData.sdp));
+        if (pc.signalingState === 'have-local-offer') {
+          await pc.setRemoteDescription(new RTCSessionDescription(signalData.sdp)).catch(e => console.warn('Camera setRemoteDescription error:', e));
+        }
         // Flush queued ICE candidates
         const queue = iceQueuesRef.current[fromSocketId] || [];
         for (const candidate of queue) {
@@ -432,7 +486,9 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
       const checks = ['FaceNotDetected', 'MultipleFaces', 'LookingAway'];
       const randomCheck = checks[Math.floor(Math.random() * checks.length)];
       captureFrame(randomCheck);
-    }
+    },
+    stopMedia,
+    startMedia
   }));
 
   return (
@@ -448,15 +504,26 @@ const ProctorCamera = forwardRef(({ examId, onPermissionDenied, onWarningLogged 
       )}
 
       {permission === 'denied' && (
-        <div className="text-center p-4 space-y-3">
-          <CameraOff className="h-10 w-10 text-rose-500 mx-auto" />
-          <p className="text-xs font-semibold text-rose-500">Camera Access Blocked</p>
-          <button
-            onClick={startMedia}
-            className="px-3 py-1 bg-slate-800 text-white rounded-lg text-xs font-medium hover:bg-slate-700 transition"
-          >
-            Retry Permission
-          </button>
+        <div className="text-center p-3 space-y-2.5 max-w-xs">
+          <CameraOff className="h-8 w-8 text-rose-500 mx-auto animate-pulse" />
+          <p className="text-xs font-bold text-rose-400 leading-snug">Camera Access Blocked</p>
+          <p className="text-[11px] text-slate-400 leading-tight">
+            {denialReason || 'Please allow webcam access in browser site settings (Click 🔒 lock icon beside URL -> Camera -> Allow).'}
+          </p>
+          <div className="flex items-center justify-center gap-2 pt-1">
+            <button
+              onClick={startMedia}
+              className="px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-xs font-bold transition shadow-sm"
+            >
+              Retry Permission
+            </button>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition border border-slate-700"
+            >
+              Reload Page
+            </button>
+          </div>
         </div>
       )}
 

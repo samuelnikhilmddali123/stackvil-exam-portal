@@ -25,7 +25,7 @@ const CreateCustomExam = () => {
 
   // Form states
   const [title, setTitle] = useState('');
-  const [duration, setDuration] = useState(60);
+  const [duration] = useState(180); // 3 Hours total (30m + 30m + 120m)
   const [aptitudeFile, setAptitudeFile] = useState(null);
   const [technicalFile, setTechnicalFile] = useState(null);
   const [codingProjectFiles, setCodingProjectFiles] = useState({});
@@ -175,30 +175,16 @@ const CreateCustomExam = () => {
             General Settings
           </h3>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-500 uppercase block">Assessment Title</label>
-              <input
-                type="text"
-                required
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. Samuel's Fullstack Dev Evaluation"
-                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500"
-              />
-            </div>
-            
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-500 uppercase block">Duration per MCQ Round (Minutes)</label>
-              <input
-                type="number"
-                required
-                min={15}
-                value={duration}
-                onChange={(e) => setDuration(Number(e.target.value))}
-                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500"
-              />
-            </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-500 uppercase block">Assessment Title</label>
+            <input
+              type="text"
+              required
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. Samuel's Fullstack Dev Evaluation"
+              className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500"
+            />
           </div>
         </div>
 

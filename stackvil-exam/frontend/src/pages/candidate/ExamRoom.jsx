@@ -2,18 +2,20 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { API_BASE_URL } from '../../config/api';
-import { 
+import {
   AlertTriangle,
-  Clock, 
-  ChevronLeft, 
-  ChevronRight, 
+  Clock,
+  ChevronLeft,
+  ChevronRight,
   CheckCircle,
   Camera,
   Wifi,
   WifiOff,
   Maximize,
   HelpCircle,
-  Code
+  Code,
+  Monitor,
+  Info
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
@@ -35,8 +37,11 @@ const ExamRoom = () => {
 
   const proctorRef = useRef(null);
   const screenShareRef = useRef(null);
+  // Persisted across all rounds — stream is never destroyed when switching Round 1 → 2 → 3
+  const persistedScreenStreamRef = useRef(null);
   const startTimeRef = useRef(Date.now());
   const questionStartRef = useRef(Date.now());
+  const globalExamStartRef = useRef(null);
 
   // Exam state
   const [exam, setExam] = useState(null);
@@ -50,8 +55,13 @@ const ExamRoom = () => {
 
   // Multi-round state tracking
   const [currentRound, setCurrentRound] = useState(1); // 1, 'success1', 2, 'success2', 3
+  const currentRoundRef = useRef(currentRound);
+  useEffect(() => {
+    currentRoundRef.current = currentRound;
+  }, [currentRound]);
   const [round1Stats, setRound1Stats] = useState(null);
   const [round2Stats, setRound2Stats] = useState(null);
+  const [screenShareActive, setScreenShareActive] = useState(false);
 
   // Round 3 workspace state
   const [round3Files, setRound3Files] = useState({});
@@ -106,7 +116,7 @@ const ExamRoom = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
-    fetchRound(1);
+    initializeActiveSession();
     setupAntiCheatingListeners();
     enterFullscreen();
 
@@ -116,9 +126,43 @@ const ExamRoom = () => {
     };
   }, []);
 
+  const initializeActiveSession = async () => {
+    try {
+      setLoading(true);
+      const res = await axios.get(`/api/candidate/exams/${examId}/active-session`);
+      if (res.data.success) {
+        const { activeRound, completed, timeLeft: dbTimeLeft } = res.data;
+        
+        if (completed) {
+          toast.success('Exam already completed.');
+          navigate('/candidate/profile');
+          return;
+        }
+
+        // Set remaining countdown timer for active round
+        setTimeLeft(dbTimeLeft);
+        globalExamStartRef.current = Date.now() - (((res.data.duration || 30) * 60 - dbTimeLeft) * 1000);
+
+        // Fetch round questions/files without resetting the global clock
+        await fetchRound(activeRound, true);
+      }
+    } catch (err) {
+      console.error('Session initialization error:', err);
+      fetchRound(1, false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Update timer every second
   useEffect(() => {
-    if (!isExamActive || timeLeft <= 0) {
+    // Timer only runs if exam is active
+    // Round 1 & 2: require screen share to be active (anti-cheat gate)
+    // Round 3: timer starts immediately on round load (Round 3 has its own internal checklist)
+    const isScreenShareRequired = (currentRound === 1 || currentRound === 2);
+    const isReady = isExamActive && (!isScreenShareRequired || screenShareActive);
+
+    if (!isReady || timeLeft <= 0) {
       if (isExamActive && timeLeft === 0) {
         toast.error('Time is up! Submitting exam automatically.');
         handleAutoSubmit();
@@ -128,7 +172,7 @@ const ExamRoom = () => {
 
     const timer = setInterval(() => {
       setTimeLeft(prev => prev - 1);
-      
+
       // Update time spent on current question
       const currentQId = questions[currentIdx]?._id;
       if (currentQId) {
@@ -140,7 +184,7 @@ const ExamRoom = () => {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isExamActive, timeLeft, currentIdx, questions]);
+  }, [isExamActive, timeLeft, currentIdx, questions, screenShareActive, currentRound]);
 
   // Sync state to localstorage for auto save
   useEffect(() => {
@@ -188,23 +232,21 @@ const ExamRoom = () => {
     }
   };
 
-  const fetchRound = async (roundNum) => {
+  const fetchRound = async (roundNum, isResuming = false) => {
     try {
       setLoading(true);
       const res = await axios.get(`/api/candidate/exams/${examId}/round/${roundNum}`);
       if (res.data.success) {
         setExam({ title: res.data.examTitle });
-        
+
         if (roundNum === 3) {
           setRound3Files(res.data.files || {});
           setActiveFile('backend/controller.js');
-          setTimeLeft(res.data.duration * 60);
           setTerminalLogs([
             { type: 'system', text: '$ npm run start' }
           ]);
         } else {
           setQuestions(res.data.questions || []);
-          setTimeLeft(res.data.duration * 60);
           setCurrentIdx(0);
 
           // Recover answers from local storage specific to this round
@@ -219,6 +261,10 @@ const ExamRoom = () => {
           setReviewLater([]);
           setQuestionTimes({});
         }
+
+        // Set the round-specific remaining time from the backend
+        setTimeLeft(res.data.timeLeft);
+        globalExamStartRef.current = Date.now() - (((res.data.duration || 30) * 60 - res.data.timeLeft) * 1000);
 
         setCurrentRound(roundNum);
         setIsExamActive(true);
@@ -279,9 +325,14 @@ const ExamRoom = () => {
     window.removeEventListener('beforeunload', handleBeforeUnload);
   };
 
-  const preventDefault = (e) => e.preventDefault();
+  const preventDefault = (e) => {
+    if (currentRoundRef.current !== 3) {
+      e.preventDefault();
+    }
+  };
 
   const handleKeyBlock = (e) => {
+    if (currentRoundRef.current === 3) return;
     // Block F12
     if (e.keyCode === 123) {
       e.preventDefault();
@@ -307,7 +358,7 @@ const ExamRoom = () => {
   };
 
   const handleVisibilityChange = () => {
-    if (document.hidden && currentRound !== 3) {
+    if (document.hidden && currentRoundRef.current !== 3) {
       triggerViolation('Tab Switch Violation');
     }
   };
@@ -315,7 +366,7 @@ const ExamRoom = () => {
   const handleFullscreenChange = () => {
     const isFull = !!(document.fullscreenElement || document.webkitFullscreenElement);
     setIsFullscreen(isFull);
-    if (!isFull && isExamActive && currentRound !== 3) {
+    if (!isFull && isExamActive && currentRoundRef.current !== 3) {
       triggerViolation('Fullscreen Mode Exit');
     }
   };
@@ -341,21 +392,22 @@ const ExamRoom = () => {
   const enterFullscreen = () => {
     const el = document.documentElement;
     if (el.requestFullscreen) {
-      el.requestFullscreen().catch(() => {});
+      el.requestFullscreen().catch(() => { });
     } else if (el.webkitRequestFullscreen) {
-      el.webkitRequestFullscreen().catch(() => {});
+      el.webkitRequestFullscreen().catch(() => { });
     }
   };
 
   const exitFullscreen = () => {
     if (document.exitFullscreen) {
-      document.exitFullscreen().catch(() => {});
+      document.exitFullscreen().catch(() => { });
     } else if (document.webkitExitFullscreen) {
-      document.webkitExitFullscreen().catch(() => {});
+      document.webkitExitFullscreen().catch(() => { });
     }
   };
 
   const triggerViolation = (type) => {
+    if (currentRoundRef.current === 3) return;
     // 1. Immediately log warning locally for instant visual feedback
     setWarningsCount(prev => {
       const next = prev + 1;
@@ -372,7 +424,7 @@ const ExamRoom = () => {
   const handleWarningLogged = (count, type) => {
     const cappedCount = Math.min(5, count);
     setWarningsCount(cappedCount);
-    
+
     if (count >= 5) {
       toast.error('You are out of the exam due to multiple warning violations');
       handleDisqualificationAutoSubmit(cappedCount);
@@ -402,7 +454,7 @@ const ExamRoom = () => {
         warningsCount: 5
       };
 
-      await axios.post(`/api/candidate/exams/${examId}/round/${currentRound}/submit`, payload).catch(() => {});
+      await axios.post(`/api/candidate/exams/${examId}/round/${currentRound}/submit`, payload).catch(() => { });
     } catch (err) {
       console.error(err);
     } finally {
@@ -450,7 +502,7 @@ const ExamRoom = () => {
 
   const toggleReviewLater = () => {
     const qId = questions[currentIdx]?._id;
-    setReviewLater(prev => 
+    setReviewLater(prev =>
       prev.includes(qId) ? prev.filter(id => id !== qId) : [...prev, qId]
     );
   };
@@ -657,13 +709,23 @@ const ExamRoom = () => {
         localStorage.removeItem(`exam_${examId}_round${currentRound}_answers`);
 
         if (currentRound === 1) {
-          setRound1Stats(res.data.result);
-          toast.success('Round 1 submitted successfully!');
-          setCurrentRound('success1');
+          toast.success('Round 1 submitted successfully! Transitioning to Round 2...');
+          fetchRound(2);
         } else if (currentRound === 2) {
-          setRound2Stats(res.data.result);
-          toast.success('Round 2 submitted successfully!');
-          setCurrentRound('success2');
+          toast.success('Round 2 submitted successfully! Transitioning to Round 3...');
+          localStorage.removeItem('round3_camera_activated');
+          // Stop camera and screen share streams before fetching Round 3
+          if (screenShareRef.current && screenShareRef.current.stopScreenShare) {
+            screenShareRef.current.stopScreenShare();
+          }
+          if (proctorRef.current && proctorRef.current.stopMedia) {
+            proctorRef.current.stopMedia();
+          }
+          if (persistedScreenStreamRef.current) {
+            persistedScreenStreamRef.current.getTracks().forEach(t => t.stop());
+            persistedScreenStreamRef.current = null;
+          }
+          fetchRound(3);
         } else {
           exitFullscreen();
           toast.success('Round 3 submitted successfully! Assessment complete.');
@@ -694,65 +756,13 @@ const ExamRoom = () => {
     );
   }
 
-  if (currentRound === 'success1') {
-    return (
-      <div className="h-screen w-screen bg-slate-950 text-white flex flex-col justify-center items-center p-6 text-left overflow-y-auto">
-        <div className="w-full max-w-xl bg-slate-900 border border-slate-800 rounded-3xl p-8 space-y-6 shadow-2xl animate-fadeIn">
-          <div className="text-center space-y-3">
-            <div className="h-16 w-16 bg-emerald-500/10 text-emerald-500 rounded-full flex items-center justify-center mx-auto border border-emerald-500/20">
-              <CheckCircle className="h-10 w-10 text-emerald-500 animate-bounce" />
-            </div>
-            <h2 className="text-2xl font-extrabold tracking-tight">Round 1 Completed Successfully</h2>
-            <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Aptitude Assessment Submitted</p>
-          </div>
 
-          <div className="p-4 bg-slate-950 border border-slate-850 rounded-2xl space-y-2 text-center text-xs">
-            <p className="text-slate-300 font-semibold">Your responses for Round 1 have been recorded successfully.</p>
-            <p className="text-slate-500">Evaluation results are processed confidentially by the administration. You may now proceed to Round 2.</p>
-          </div>
 
-          <div className="pt-2">
-            <button
-              onClick={() => fetchRound(2)}
-              className="w-full py-4 bg-brand-600 hover:bg-brand-700 text-white font-extrabold rounded-2xl shadow-lg shadow-brand-500/20 transition flex items-center justify-center space-x-2 text-sm cursor-pointer"
-            >
-              <span>Start Round 2 →</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (currentRound === 'success2') {
-    return (
-      <div className="h-screen w-screen bg-slate-950 text-white flex flex-col justify-center items-center p-6 text-left overflow-y-auto">
-        <div className="w-full max-w-xl bg-slate-900 border border-slate-800 rounded-3xl p-8 space-y-6 shadow-2xl animate-fadeIn">
-          <div className="text-center space-y-3">
-            <div className="h-16 w-16 bg-emerald-500/10 text-emerald-500 rounded-full flex items-center justify-center mx-auto border border-emerald-500/20">
-              <CheckCircle className="h-10 w-10 text-emerald-500 animate-bounce" />
-            </div>
-            <h2 className="text-2xl font-extrabold tracking-tight">Round 2 Completed Successfully</h2>
-            <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Technical Assessment Submitted</p>
-          </div>
-
-          <div className="p-4 bg-slate-950 border border-slate-850 rounded-2xl space-y-2 text-center text-xs">
-            <p className="text-slate-300 font-semibold">Your responses for Round 2 have been recorded successfully.</p>
-            <p className="text-slate-500">Evaluation results are processed confidentially by the administration. You may now proceed to Round 3 (Coding Assessment).</p>
-          </div>
-
-          <div className="pt-2">
-            <button
-              onClick={() => fetchRound(3)}
-              className="w-full py-4 bg-brand-600 hover:bg-brand-700 text-white font-extrabold rounded-2xl shadow-lg shadow-brand-500/20 transition flex items-center justify-center space-x-2 text-sm cursor-pointer"
-            >
-              <span>Start Round 3 →</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const startCamera = () => {
+    if (proctorRef.current && proctorRef.current.startMedia) {
+      proctorRef.current.startMedia();
+    }
+  };
 
   if (currentRound === 3) {
     return (
@@ -761,13 +771,25 @@ const ExamRoom = () => {
         files={round3Files}
         onSubmitProject={(submittedFiles) => performRoundSubmission(warningsCount, submittedFiles)}
         examTitle={exam?.title || 'Coding Assessment'}
-        durationMinutes={60}
+        durationMinutes={120}
         timeLeftSeconds={timeLeft}
         isSubmitting={isSubmitting}
+        persistedStreamRef={persistedScreenStreamRef}
+        onScreenShareStateChange={(sharing) => setScreenShareActive(sharing)}
+        onStartCamera={startCamera}
         proctorComponent={
           <ProctorCamera
             ref={proctorRef}
             examId={examId}
+            autoStart={localStorage.getItem('round3_camera_activated') === 'true'}
+            onPermissionGranted={() => {
+              localStorage.setItem('round3_camera_activated', 'true');
+              if (window.setRound3CameraActive) window.setRound3CameraActive(true);
+            }}
+            onPermissionDenied={() => {
+              localStorage.removeItem('round3_camera_activated');
+              if (window.setRound3CameraActive) window.setRound3CameraActive(false);
+            }}
             onWarningLogged={handleWarningLogged}
           />
         }
@@ -777,17 +799,21 @@ const ExamRoom = () => {
 
   const currentQ = questions[currentIdx];
   const totalQuestions = questions.length;
-  
-  // Format Countdown Timer (MM:SS)
+
+  // Format Countdown Timer (H:MM:SS or MM:SS)
   const formatTime = (secs) => {
-    const mins = Math.floor(secs / 60);
+    const hours = Math.floor(secs / 3600);
+    const mins = Math.floor((secs % 3600) / 60);
     const remainingSecs = secs % 60;
+    if (hours > 0) {
+      return `${hours}:${mins.toString().padStart(2, '0')}:${remainingSecs.toString().padStart(2, '0')}`;
+    }
     return `${mins.toString().padStart(2, '0')}:${remainingSecs.toString().padStart(2, '0')}`;
   };
 
   return (
-    <div className="h-screen w-screen bg-slate-950 text-white flex flex-col overflow-hidden no-select select-none">
-      
+    <div className="h-screen w-screen bg-slate-950 text-white flex flex-col overflow-hidden no-select select-none pb-14">
+
       {/* Header stats bar */}
       <div className="h-14 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-6 shrink-0 z-10">
         <div className="flex items-center space-x-3">
@@ -816,9 +842,12 @@ const ExamRoom = () => {
           </div>
 
           {/* Countdown Clock */}
-          <div className="flex items-center space-x-2 px-3 py-1 bg-slate-800 border border-slate-700/60 rounded-xl">
-            <Clock className="h-4.5 w-4.5 text-brand-400" />
-            <span className="font-mono text-sm font-bold text-white tracking-wider w-[52px]">
+          <div className="flex items-center space-x-2.5 px-3.5 py-1.5 bg-slate-800 border border-slate-700/60 rounded-xl">
+            <Clock className="h-4 w-4 text-brand-400" />
+            <span className="font-mono text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
+              ROUND {currentRound} TIME REMAINING:
+            </span>
+            <span className="font-mono text-sm font-black text-white tracking-wider">
               {formatTime(timeLeft)}
             </span>
           </div>
@@ -826,19 +855,58 @@ const ExamRoom = () => {
           {/* Submit */}
           <button
             onClick={handleManualSubmit}
-            className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 font-bold text-xs rounded-xl shadow-lg shadow-emerald-900/10 transition"
+            className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 font-bold text-xs rounded-xl shadow-lg shadow-emerald-900/10 transition cursor-pointer"
           >
-            Submit Exam
+            Submit Round {currentRound}
           </button>
         </div>
       </div>
 
+      {/* Screen Sharing Proctoring Modal Overlay for Round 1 & Round 2 */}
+      {!screenShareActive && (currentRound === 1 || currentRound === 2) && (
+        <div className="fixed inset-0 bg-slate-950/98 z-[9999] flex flex-col items-center justify-center p-6 text-center backdrop-blur-md">
+          <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 space-y-6 shadow-2xl shadow-brand-500/10">
+            {/* Glowing screen share icon */}
+            <div className="relative mx-auto h-20 w-20 bg-brand-500/10 text-brand-400 rounded-2xl flex items-center justify-center border border-brand-500/20 shadow-lg shadow-brand-500/5">
+              <div className="absolute inset-0 bg-brand-500/20 rounded-2xl blur-lg animate-pulse" />
+              <Monitor className="relative h-10 w-10 text-brand-400" />
+            </div>
+
+            <div className="space-y-2 text-center">
+              <h2 className="text-xl font-black text-white tracking-tight">Screen Sharing Required</h2>
+              <p className="text-xs text-slate-400 font-medium leading-relaxed">
+                To maintain the integrity of this proctored assessment, you are required to share your <strong>Entire Screen</strong>. Single tabs or application windows are not allowed.
+              </p>
+            </div>
+
+            <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-4 text-left flex items-start space-x-3 text-[11px] text-amber-300">
+              <Info className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+              <span>
+                The exam timer is currently <strong>paused</strong>. Once you authorize entire screen sharing, the questions will unlock and the countdown will commence.
+              </span>
+            </div>
+
+            <button
+              onClick={() => {
+                if (screenShareRef.current && screenShareRef.current.startScreenShare) {
+                  screenShareRef.current.startScreenShare();
+                }
+              }}
+              className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-650 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold text-xs uppercase tracking-wider rounded-2xl shadow-xl shadow-indigo-500/20 hover:shadow-indigo-500/30 transition-all duration-300 flex items-center justify-center space-x-2 cursor-pointer"
+            >
+              <Monitor className="h-4 w-4" />
+              <span>Share Entire Screen Now</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Main split dashboard pane */}
       <div className="flex-1 flex overflow-hidden min-h-0">
-        
+
         {/* Left Pane: Question Text & Answer selection layout */}
         <div className="flex-1 overflow-y-auto p-6 md:p-10 space-y-6 flex flex-col justify-between">
-          
+
           <div className="space-y-6">
             {/* Question title & header */}
             <div className="flex justify-between items-start gap-4">
@@ -851,7 +919,7 @@ const ExamRoom = () => {
             </div>
 
             {/* Render question inputs depending on type */}
-            <motion.div 
+            <motion.div
               key={currentIdx}
               initial={{ x: 10, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
@@ -861,10 +929,10 @@ const ExamRoom = () => {
               {/* Image box if type is Image */}
               {currentQ?.type === 'Image' && currentQ.imageUrl && (
                 <div className="max-w-md w-full border border-slate-800 rounded-2xl overflow-hidden bg-slate-900 flex items-center justify-center p-2 mb-4">
-                  <img 
-                    src={`${API_BASE_URL}${currentQ.imageUrl}`} 
-                    alt="Question visual layout" 
-                    className="max-h-[220px] object-contain rounded-xl" 
+                  <img
+                    src={`${API_BASE_URL}${currentQ.imageUrl}`}
+                    alt="Question visual layout"
+                    className="max-h-[220px] object-contain rounded-xl"
                   />
                 </div>
               )}
@@ -876,15 +944,13 @@ const ExamRoom = () => {
                     <button
                       key={idx}
                       onClick={() => handleAnswerSelect(opt)}
-                      className={`w-full flex items-center space-x-3.5 px-5 py-3.5 rounded-2xl border text-left text-sm font-semibold transition ${
-                        answers[currentQ._id] === opt
+                      className={`w-full flex items-center space-x-3.5 px-5 py-3.5 rounded-2xl border text-left text-sm font-semibold transition ${answers[currentQ._id] === opt
                           ? 'bg-brand-600/20 border-brand-500 text-white shadow-lg shadow-brand-500/5'
                           : 'bg-slate-900 border-slate-800/80 text-slate-350 hover:bg-slate-800/60 hover:text-white'
-                      }`}
+                        }`}
                     >
-                      <span className={`h-5 w-5 rounded-full border flex items-center justify-center font-bold text-[10px] uppercase shrink-0 ${
-                        answers[currentQ._id] === opt ? 'border-brand-500 bg-brand-500 text-white' : 'border-slate-700'
-                      }`}>
+                      <span className={`h-5 w-5 rounded-full border flex items-center justify-center font-bold text-[10px] uppercase shrink-0 ${answers[currentQ._id] === opt ? 'border-brand-500 bg-brand-500 text-white' : 'border-slate-700'
+                        }`}>
                         {String.fromCharCode(65 + idx)}
                       </span>
                       <span>{opt}</span>
@@ -902,15 +968,13 @@ const ExamRoom = () => {
                       <button
                         key={idx}
                         onClick={() => handleCheckboxToggle(opt)}
-                        className={`w-full flex items-center space-x-3.5 px-5 py-3.5 rounded-2xl border text-left text-sm font-semibold transition ${
-                          isChecked
+                        className={`w-full flex items-center space-x-3.5 px-5 py-3.5 rounded-2xl border text-left text-sm font-semibold transition ${isChecked
                             ? 'bg-brand-600/20 border-brand-500 text-white shadow-lg shadow-brand-500/5'
                             : 'bg-slate-900 border-slate-800/80 text-slate-350 hover:bg-slate-800/60 hover:text-white'
-                        }`}
+                          }`}
                       >
-                        <span className={`h-5 w-5 rounded-lg border flex items-center justify-center shrink-0 ${
-                          isChecked ? 'border-brand-500 bg-brand-500 text-white' : 'border-slate-700'
-                        }`}>
+                        <span className={`h-5 w-5 rounded-lg border flex items-center justify-center shrink-0 ${isChecked ? 'border-brand-500 bg-brand-500 text-white' : 'border-slate-700'
+                          }`}>
                           {isChecked && '✓'}
                         </span>
                         <span>{opt}</span>
@@ -927,11 +991,10 @@ const ExamRoom = () => {
                     <button
                       key={opt}
                       onClick={() => handleAnswerSelect(opt)}
-                      className={`w-1/2 py-4 rounded-2xl border text-center text-sm font-bold transition ${
-                        answers[currentQ._id] === opt
+                      className={`w-1/2 py-4 rounded-2xl border text-center text-sm font-bold transition ${answers[currentQ._id] === opt
                           ? 'bg-brand-600/20 border-brand-500 text-white shadow-lg shadow-brand-500/5'
                           : 'bg-slate-900 border-slate-800/80 text-slate-350 hover:bg-slate-800/60 hover:text-white'
-                      }`}
+                        }`}
                     >
                       {opt}
                     </button>
@@ -974,7 +1037,7 @@ const ExamRoom = () => {
                       )}
                     </button>
                   </div>
-                  
+
                   <CodeEditor
                     language="javascript"
                     value={answers[currentQ._id] || currentQ.codeTemplates?.[0]?.template || ''}
@@ -1042,11 +1105,10 @@ const ExamRoom = () => {
             {/* Review later toggle */}
             <button
               onClick={toggleReviewLater}
-              className={`px-5 py-2.5 rounded-xl border text-xs font-semibold transition ${
-                reviewLater.includes(currentQ?._id)
+              className={`px-5 py-2.5 rounded-xl border text-xs font-semibold transition ${reviewLater.includes(currentQ?._id)
                   ? 'bg-amber-600/20 border-amber-500 text-amber-400'
                   : 'bg-slate-900 border-slate-800 text-slate-450 hover:bg-slate-800 hover:text-white'
-              }`}
+                }`}
             >
               {reviewLater.includes(currentQ?._id) ? 'Review List Active' : 'Mark for Review Later'}
             </button>
@@ -1072,17 +1134,42 @@ const ExamRoom = () => {
         </div>
 
         {/* Right Pane: Camera monitor and Question Palette */}
-        <div className="w-80 shrink-0 bg-slate-900 border-l border-slate-800 flex flex-col p-6 space-y-6 hidden lg:flex">
-          
+        <div className="w-80 shrink-0 bg-slate-900 border-l border-slate-800 flex flex-col p-6 space-y-6 hidden lg:flex overflow-y-auto">
+
+          {/* Interactive Question selection Palette */}
+          <QuestionPalette
+            questions={questions}
+            currentQuestionIndex={currentIdx}
+            answers={answers}
+            reviewLater={reviewLater}
+            onSelectQuestion={(idx) => setCurrentIdx(idx)}
+          />
+
+          {/* Warnings Log indicator */}
+          <div className="p-4 bg-slate-950 border border-slate-800/80 rounded-2xl flex items-center justify-between shrink-0">
+            <div className="flex items-center space-x-2 text-xs font-semibold text-slate-450">
+              <AlertTriangle className="h-4.5 w-4.5 text-rose-500 shrink-0 animate-pulse" />
+              <span>Warning Count:</span>
+            </div>
+            <span className={`px-2 py-0.5 rounded font-bold text-xs ${warningsCount >= 4 ? 'bg-rose-600 text-white' : 'bg-slate-800 text-slate-200'
+              }`}>
+              {warningsCount} / 5
+            </span>
+          </div>
+
           {/* Proctoring camera & screen feeds */}
-          <div className="space-y-4">
+          <div className="space-y-4 shrink-0">
             <div className="space-y-1.5">
               <h4 className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">Webcam Audit</h4>
               <ProctorCamera
                 ref={proctorRef}
                 examId={examId}
-                onPermissionDenied={() => {
-                  triggerViolation('Camera Permission Denied');
+                onPermissionGranted={() => {
+                  toast.success('Webcam connected & live proctoring active.');
+                }}
+                onPermissionDenied={(reason) => {
+                  console.warn('Proctor camera notice:', reason);
+                  toast.error('Webcam access is required for live proctoring. Please click "Retry Permission" on the camera feed if blocked.', { id: 'camDenied', duration: 5000 });
                 }}
                 onWarningLogged={handleWarningLogged}
               />
@@ -1094,32 +1181,16 @@ const ExamRoom = () => {
                 ref={screenShareRef}
                 examId={examId}
                 onWarningLogged={handleWarningLogged}
+                persistedStreamRef={persistedScreenStreamRef}
+                onScreenShareStateChange={(sharing, isEntire) => {
+                  setScreenShareActive(sharing && isEntire);
+                  // Keep banner hidden if stream was already active from a previous round
+                  if (persistedScreenStreamRef.current && sharing) {
+                    setScreenShareActive(true);
+                  }
+                }}
               />
             </div>
-          </div>
-
-          {/* Warnings Log indicator */}
-          <div className="p-4 bg-slate-950 border border-slate-800/80 rounded-2xl flex items-center justify-between">
-            <div className="flex items-center space-x-2 text-xs font-semibold text-slate-450">
-              <AlertTriangle className="h-4.5 w-4.5 text-rose-500 shrink-0 animate-pulse" />
-              <span>Warning Count:</span>
-            </div>
-            <span className={`px-2 py-0.5 rounded font-bold text-xs ${
-              warningsCount >= 4 ? 'bg-rose-600 text-white' : 'bg-slate-800 text-slate-200'
-            }`}>
-              {warningsCount} / 5
-            </span>
-          </div>
-
-          {/* Interactive Question selection Palette */}
-          <div className="flex-1 overflow-y-auto">
-            <QuestionPalette
-              questions={questions}
-              currentQuestionIndex={currentIdx}
-              answers={answers}
-              reviewLater={reviewLater}
-              onSelectQuestion={(idx) => setCurrentIdx(idx)}
-            />
           </div>
 
         </div>

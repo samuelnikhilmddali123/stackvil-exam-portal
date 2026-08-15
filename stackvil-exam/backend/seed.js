@@ -52,7 +52,15 @@ const seedData = async () => {
       department: 'Human Resources',
     });
 
-    console.log('Users (SuperAdmin, Admin) seeded.');
+    const candidateUser = await User.create({
+      name: 'John Candidate',
+      email: 'candidate@stackvil.com',
+      password: 'password123',
+      role: 'candidate',
+      department: 'Engineering',
+    });
+
+    console.log('Users (SuperAdmin, HR Admin, Candidate) seeded.');
 
     // 3. Create Question Bank
     const q1 = await Question.create({
@@ -130,11 +138,11 @@ const seedData = async () => {
       randomizeQuestions: false,
       shuffleOptions: false,
       passingScore: 60, // 60%
-      assignedCandidates: [],
+      assignedCandidates: [candidateUser._id],
       status: 'Active',
     });
 
-    console.log(`Exam "${exam.title}" created and active.`);
+    console.log(`Exam "${exam.title}" created and assigned to Candidate.`);
     console.log('Seeding finished successfully.');
     process.exit(0);
   } catch (error) {

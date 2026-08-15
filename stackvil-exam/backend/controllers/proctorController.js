@@ -1,6 +1,7 @@
 const ProctorLog = require('../models/ProctorLog');
 const Result = require('../models/Result');
 const Exam = require('../models/Exam');
+const User = require('../models/User');
 const fs = require('fs');
 
 /**
@@ -187,7 +188,7 @@ const getLiveProctorSessions = async (req, res, next) => {
     // 1. Fetch all proctor logs populated with candidate and exam info
     const logs = await ProctorLog.find()
       .populate('candidate', 'name email department')
-      .populate('exam', 'title duration');
+      .populate('exam', 'title duration codingProject');
 
     const liveSessions = [];
 
@@ -196,8 +197,21 @@ const getLiveProctorSessions = async (req, res, next) => {
 
       // 2. Check if a corresponding Result exists and is fully submitted/completed or disqualified
       const result = await Result.findOne({ candidate: log.candidate._id, exam: log.exam._id });
-      if (result && (result.isDisqualified || (result.round3 && result.round3.completed) || (result.submittedAt && result.status !== 'Pending'))) {
-        continue; // Fully submitted/completed exam session or disqualified candidate, skip
+      if (result) {
+        if (result.isDisqualified) {
+          continue; // Disqualified candidate, skip
+        }
+
+        const hasRound3 = log.exam.codingProject && log.exam.codingProject.hasProject;
+        if (hasRound3) {
+          if (result.round3 && result.round3.completed) {
+            continue; // Completed Round 3 (entire exam), skip
+          }
+        } else {
+          if (result.submittedAt && result.status !== 'Pending') {
+            continue; // Completed Round 2 (entire 2-round exam), skip
+          }
+        }
       }
 
       // 3. Verify if candidate is active (within last 30 minutes)
@@ -224,7 +238,7 @@ const getLiveProctorSessions = async (req, res, next) => {
           candidateDepartment: log.candidate.department || 'Engineering',
           examId: log.exam._id,
           examTitle: log.exam.title,
-          warningsCount: result ? (result.warningsCount || warnings.length) : warnings.length,
+          warningsCount: result ? (result.warningsCount !== undefined ? result.warningsCount : warnings.length) : warnings.length,
           latestImagePath: latestImageLog ? latestImageLog.imagePath : null,
           lastActivityType: lastLog ? lastLog.type : 'Exam Active',
           lastActivityTime: lastTimestamp,
